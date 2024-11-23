@@ -2,4 +2,4 @@
 if {![info exists TZData(Australia/Sydney)]} {
     LoadTimeZoneFile Australia/Sydney
 }
-set TZData(:Australia/ACT) $TZData(:Australia/Sydney)
+set TZData(:Australia/NSW) $TZData(:Australia/Sydney)
