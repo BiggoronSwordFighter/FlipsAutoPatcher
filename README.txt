@@ -1,5 +1,5 @@
 This is a third party tool extension for auto patching ROMs with flips.exe. 
-You can find the FlipsAutoPatcher-v1.2.2.EXE in "/dist/", copy the contents of the dist folder where ever you want.
+You can find the FlipsAutoPatcher-v1.2.2.EXE in "/dist/", copy the contents of the dist folder wherever you want.
 
 Notes:
 1. Added slightly better error handling.
