@@ -1,4 +1,3 @@
-v1.2.2 
 This is a third party tool extension for auto patching ROMs with flips.exe. 
 You can find the FlipsAutoPatcher-v1.2.2.EXE in "/dist/", copy the contents of the dist folder where ever you want.
 
@@ -20,3 +19,26 @@ SHA-1: ad69c91157f6705e8ab06c79fe08aad47bb57ba7
 ROM ZLE: (ec7011b77616d72b)
 
 
+v1.2.2 
+FlipsAutoPatcher-main/              <-- Root directory of the project
+├── dist/                          <-- Directory for bundled executable and dependencies
+│   ├── FlipsAutoPatcher-v1.2.2.exe  <-- Executable file created by PyInstaller
+│   ├── tcl/                        <-- Directory containing Tcl-related files (e.g., `tk.tcl`)
+│   │   ├── tk8.6/                  <-- Directory for Tk-related files
+│   │   │   ├── tk.tcl              <-- Required Tk TCL file
+│   │   │   └── other_tcl_files     <-- Other Tcl-related files
+│   ├── tk86t.dll                   <-- Tk DLL file
+│   ├── tcl86t.dll                  <-- Tcl DLL file
+│   ├── flips.ico                   <-- Icon file (if used in GUI)
+│   ├── _tkinter.pyd                <-- Python extension for tkinter
+│   └── other_dependencies/         <-- Any other required bundled libraries
+├── main.py                         <-- Main script that starts the application
+├── utils.py                        <-- Utility file with helper functions 
+├── README.txt                      <-- Project documentation or instructions
+├── run.bat                         <-- Batch file to run the project (Windows CMD)
+├── setup.py                        <-- Setup script for packaging
+├── setup1.bat                      <-- Setup batch file
+├── setup2.bat                      <-- Setup batch file
+├── ico/                            <-- Directory for additional icons
+│   └── flips.ico                   <-- Icon for the project
+└── LICENSE                         <-- Project license file 
