@@ -18,7 +18,6 @@ MD5: 5bd1fe107bf8106b2ab6650abecd54d6
 SHA-1: ad69c91157f6705e8ab06c79fe08aad47bb57ba7                                                                 
 ROM ZLE: (ec7011b77616d72b)
 
-
 v1.2.2 
 FlipsAutoPatcher-main/              <-- Root directory of the project
 ├── dist/                          <-- Directory for bundled executable and dependencies
