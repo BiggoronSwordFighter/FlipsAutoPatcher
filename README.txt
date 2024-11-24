@@ -25,23 +25,23 @@ FlipsAutoPatcher-main/               <-- Root directory of the project
 │   ├── FlipsAutoPatcher-v1.2.2.exe  <-- Executable file created by PyInstaller
 │   ├── lib/                         <-- Directory containing Tcl-related files (e.g., `tk.tcl`)
 │   │   ├── tk/                      <-- Directory for Tk-related files
-│   │   │   ├── tk.tcl               <-- Required Tk TCL file
+│   │   │   ├── tk.tcl               <-- Required Tk TCL file (output file for the EXE)
 │   │   │   └── other_tcl_files      <-- Other Tcl-related files
 │   ├── tk86t.dll                    <-- Tk DLL file
 │   ├── tcl86t.dll                   <-- Tcl DLL file
 │   ├── flips/                       <-- Flips folder
-│   │   └── flips.exe                <-- Flips.exe (Output file for EXE)
+│   │   └── flips.exe                <-- Flips.exe (setup.py outputs file for the EXE)
 │   ├── ico/                         <-- Icon folder 
-│   │   └── flips.ico                <-- Icon file (Output file for EXE)
+│   │   └── flips.ico                <-- Icon file (setup.py outputs file for the EXE)
 │   ├── _tkinter.pyd                 <-- Python extension for tkinter
 │   └── other_dependencies/          <-- Any other required bundled libraries
-├── main.py                          <-- Main script that starts the application
+├── main.py                          <-- Main script for the application
 ├── utils.py                         <-- Utility file with helper functions 
 ├── README.txt                       <-- Project documentation or instructions
-├── run.bat                          <-- Batch file to run the project (Windows CMD)
-├── setup.py                         <-- Setup script for packaging
-├── setup1.bat                       <-- Setup batch file
-├── setup2.bat                       <-- Setup batch file                             
+├── run.bat                          <-- Batch file to run the main.py in Windows CMD
+├── setup.py                         <-- Setup script for packaging 
+├── setup1.bat                       <-- First setup file
+├── setup2.bat                       <-- Second setup file                             
 ├── flips.ico                        <-- Required Icon for the project (included)
 ├── flips.exe                        <-- Required EXE for the project (not included)
 └── COPYING                          <-- Project license file 
