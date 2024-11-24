@@ -38,7 +38,7 @@ FlipsAutoPatcher-main/               <-- Root directory of the project
 ├── main.py                          <-- Main script for the application
 ├── utils.py                         <-- Utility file with helper functions 
 ├── README.txt                       <-- Project documentation or instructions
-├── run.bat                          <-- Batch file to run the main.py in Windows CMD
+├── run.bat                          <-- Batch file to run main.py in Windows CMD
 ├── setup.py                         <-- Setup script for packaging 
 ├── setup1.bat                       <-- First setup file (builds the EXE)
 ├── setup2.bat                       <-- Second setup file (builds the EXE)                          
