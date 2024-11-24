@@ -36,7 +36,7 @@ FlipsAutoPatcher-main/              <-- Root directory of the project
 │   ├── _tkinter.pyd                <-- Python extension for tkinter
 │   └── other_dependencies/         <-- Any other required bundled libraries
 ├── main.py                         <-- Main script for the application
-├── utils.py                        <-- Utility file with helper functions 
+├── utils.py                        <-- Utility file with functions for getting hash info
 ├── README.txt                      <-- Project documentation or instructions
 ├── run.bat                         <-- Batch file to run main.py in Windows CMD
 ├── setup.py                        <-- Setup script for packaging 
