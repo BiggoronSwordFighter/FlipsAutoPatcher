@@ -29,7 +29,10 @@ FlipsAutoPatcher-main/               <-- Root directory of the project
 │   │   │   └── other_tcl_files      <-- Other Tcl-related files
 │   ├── tk86t.dll                    <-- Tk DLL file
 │   ├── tcl86t.dll                   <-- Tcl DLL file
-│   ├── flips.ico                    <-- Icon file (if used in GUI)
+│   ├── flips/                       <-- Flips folder
+│   │   └── flips.exe                <-- Flips.exe (Output)
+│   ├── ico/                         <-- Icon folder 
+│   │   └── flips.ico                <-- Icon file (used in GUI, main.py also searches the root folder for the icon)
 │   ├── _tkinter.pyd                 <-- Python extension for tkinter
 │   └── other_dependencies/          <-- Any other required bundled libraries
 ├── main.py                          <-- Main script that starts the application
@@ -38,7 +41,7 @@ FlipsAutoPatcher-main/               <-- Root directory of the project
 ├── run.bat                          <-- Batch file to run the project (Windows CMD)
 ├── setup.py                         <-- Setup script for packaging
 ├── setup1.bat                       <-- Setup batch file
-├── setup2.bat                       <-- Setup batch file
-├── ico/                             <-- Directory for additional icons
-│   └── flips.ico                    <-- Icon for the project
+├── setup2.bat                       <-- Setup batch file                             
+├── flips.ico                        <-- Icon for the project
+├── flips.exe                        <-- Required EXE for the project
 └── LICENSE                          <-- Project license file 
