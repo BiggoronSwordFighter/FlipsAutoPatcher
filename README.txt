@@ -23,8 +23,8 @@ v1.2.2
 FlipsAutoPatcher-main/               <-- Root directory of the project
 ├── dist/                            <-- Directory for bundled executable and dependencies
 │   ├── FlipsAutoPatcher-v1.2.2.exe  <-- Executable file created by PyInstaller
-│   ├── tcl/                         <-- Directory containing Tcl-related files (e.g., `tk.tcl`)
-│   │   ├── tk8.6/                   <-- Directory for Tk-related files
+│   ├── lib/                         <-- Directory containing Tcl-related files (e.g., `tk.tcl`)
+│   │   ├── tk/                      <-- Directory for Tk-related files
 │   │   │   ├── tk.tcl               <-- Required Tk TCL file
 │   │   │   └── other_tcl_files      <-- Other Tcl-related files
 │   ├── tk86t.dll                    <-- Tk DLL file
