@@ -1,3 +1,5 @@
+# Ignore the dist directory
 /dist/
 
-*.exe
+# Ignore flips.exe file
+flips.exe
