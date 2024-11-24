@@ -1,5 +1,7 @@
-# Ignore the dist directory
+# Ignore directories
 /dist/
+/build/
+/UNKNOWN.egg-info/
 
-# Ignore flips.exe file
-flips.exe
+# Ignore files
+*.exe
