@@ -40,8 +40,8 @@ FlipsAutoPatcher-main/               <-- Root directory of the project
 ├── README.txt                       <-- Project documentation or instructions
 ├── run.bat                          <-- Batch file to run the main.py in Windows CMD
 ├── setup.py                         <-- Setup script for packaging 
-├── setup1.bat                       <-- First setup file
-├── setup2.bat                       <-- Second setup file                             
+├── setup1.bat                       <-- First setup file (builds the EXE)
+├── setup2.bat                       <-- Second setup file (builds the EXE)                          
 ├── flips.ico                        <-- Required Icon for the project (included)
 ├── flips.exe                        <-- Required EXE for the project (not included)
 └── COPYING                          <-- Project license file 
