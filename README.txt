@@ -20,28 +20,28 @@ SHA-1: ad69c91157f6705e8ab06c79fe08aad47bb57ba7
 ROM ZLE: (ec7011b77616d72b)
 
 v1.2.2 
-FlipsAutoPatcher-main/               <-- Root directory of the project
-├── dist/                            <-- Directory for bundled executable and dependencies
-│   ├── FlipsAutoPatcher-v1.2.2.exe  <-- Executable file created by PyInstaller
-│   ├── lib/                         <-- Directory containing Tcl-related files (e.g., `tk.tcl`)
-│   │   ├── tk/                      <-- Directory for Tk-related files
-│   │   │   ├── tk.tcl               <-- Required Tk TCL file (output file for the EXE)
-│   │   │   └── other_tcl_files      <-- Other Tcl-related files
-│   ├── tk86t.dll                    <-- Tk DLL file
-│   ├── tcl86t.dll                   <-- Tcl DLL file
-│   ├── flips/                       <-- Flips folder
-│   │   └── flips.exe                <-- Flips.exe (setup.py outputs file for the EXE)
-│   ├── ico/                         <-- Icon folder 
-│   │   └── flips.ico                <-- Icon file (setup.py outputs file for the EXE)
-│   ├── _tkinter.pyd                 <-- Python extension for tkinter
-│   └── other_dependencies/          <-- Any other required bundled libraries
-├── main.py                          <-- Main script for the application
-├── utils.py                         <-- Utility file with helper functions 
-├── README.txt                       <-- Project documentation or instructions
-├── run.bat                          <-- Batch file to run main.py in Windows CMD
-├── setup.py                         <-- Setup script for packaging 
-├── setup1.bat                       <-- First setup file (builds the EXE)
-├── setup2.bat                       <-- Second setup file (builds the EXE)                          
-├── flips.ico                        <-- Required Icon for the project (included)
-├── flips.exe                        <-- Required EXE for the project (not included)
-└── COPYING                          <-- Project license file 
+FlipsAutoPatcher-main/              <-- Root directory of the project
+├── dist/                           <-- Directory for bundled executable and dependencies
+│   ├── FlipsAutoPatcher-v1.2.2.exe <-- Executable file created by PyInstaller
+│   ├── lib/                        <-- Directory containing Tcl-related files (e.g., `tk.tcl`)
+│   │   ├── tk/                     <-- Directory for Tk-related files
+│   │   │   ├── tk.tcl              <-- Required Tk TCL file (output file for the EXE)
+│   │   │   └── other_tcl_files     <-- Other Tcl-related files
+│   ├── tk86t.dll                   <-- Tk DLL file
+│   ├── tcl86t.dll                  <-- Tcl DLL file
+│   ├── flips/                      <-- Flips folder
+│   │   └── flips.exe               <-- Flips.exe (setup.py outputs file for the EXE)
+│   ├── ico/                        <-- Icon folder 
+│   │   └── flips.ico               <-- Icon file (setup.py outputs file for the EXE)
+│   ├── _tkinter.pyd                <-- Python extension for tkinter
+│   └── other_dependencies/         <-- Any other required bundled libraries
+├── main.py                         <-- Main script for the application
+├── utils.py                        <-- Utility file with helper functions 
+├── README.txt                      <-- Project documentation or instructions
+├── run.bat                         <-- Batch file to run main.py in Windows CMD
+├── setup.py                        <-- Setup script for packaging 
+├── setup1.bat                      <-- First setup file (builds the EXE)
+├── setup2.bat                      <-- Second setup file (builds the EXE)                          
+├── flips.ico                       <-- Required Icon for the project (included)
+├── flips.exe                       <-- Required EXE for the project (not included)
+└── COPYING                         <-- Project license file 
