@@ -4,12 +4,12 @@
 ============================= Flips Auto Patcher (GUI) =============================
 
 • What this tool mainly does
-  - “Auto Patch Files” → multiple applies existing patch files (.bps / .ips) to a Base ROM.
+  - “Auto Patch Files” → applies multiple existing patch files (.bps / .ips) to a Base ROM.
   - “Auto Create Patches” → creates multiple patch files by comparing a Base ROM with a Modified ROM.
 
 • Required files for usage:
   - Base ROM: the original, unmodified game ROM (your “clean” file).
-  - Modified ROM: the edited/changed ROM (the one that differs from the Base ROM).
+  - Modified ROM: the edited/changed ROM.
   - Patch (.bps / .ips): a tiny file that stores the differences between a Base ROM and a Modified ROM.
 
 • How the main UI buttons are arranged:
