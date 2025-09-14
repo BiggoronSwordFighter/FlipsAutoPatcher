@@ -1,4 +1,4 @@
-@echo on
+@echo off
 setlocal
 REM Change to the folder this BAT lives in (handles other drives too).
 cd /d "%~dp0"
@@ -13,4 +13,5 @@ if %ERRORLEVEL%==0 (
 
 pause
 endlocal
+
 
