@@ -11,6 +11,6 @@ if %ERRORLEVEL%==0 (
   python "%~dp0main.py" %*
 )
 
-echo %~dp0main.py %~dp0
 pause
 endlocal
+
