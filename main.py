@@ -12,10 +12,6 @@
   - Modified ROM: the edited/changed ROM.
   - Patch (.bps / .ips): a tiny file that stores the differences between a Base ROM and a Modified ROM.
 
-• How the main UI buttons are arranged:
-  Row 1 (left→right): Mode menu → .BPS/.IPS menu → Start → Clear → Reset → Load Config → Save Config
-  Row 2 (left→right): Force to Patch → Append “_patched” → Expanded file search menu
-
 • Code sections (glossary):
   1) SECTION A – Imports & paths
   2) SECTION B – Tooltip helper (small class for hover help)
