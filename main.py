@@ -211,7 +211,7 @@ class AutoPatcherApp:
         ]
 
         # ------------------- Window skeleton -------------------
-        root.title("Flips Auto Patcher V1.3.2")
+        root.title("Flips Auto Patcher V2.0.0")
         root.geometry("1200x560")
 
         # Info/Output area (top big text box).
