@@ -745,7 +745,7 @@ class AutoPatcherApp:
                 self.log_message(f"Selected Modified ROM file: {os.path.basename(rom)}")
                 self.display_modified_rom_hashes(rom)
                 self.log_message(f"Select the base ROM file.")
-                ################################################################# USE AI LATER TO GET THIS PART TO ONLY DISPLAY ONCE OR REMOVE IT
+                
             # (3) Pick the Base ROM second
             self.file_search_rom()
             if not self.base_rom:
