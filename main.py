@@ -60,18 +60,20 @@ from open_with_handle import OpenWithHandler
 from utils import calculate_crc32, calculate_md5, calculate_sha1, calculate_zle_hash, get_patch_metadata
 
 # Determine where we are running (bundled EXE vs plain Python script).
-script_dir = os.getcwd()  # default/fallback
-
-if getattr(sys, 'frozen', False):  # True when running as a bundled EXE.
-    flips_exe_path = os.path.join(script_dir, 'flips', 'flips.exe')
+# FIXED: use sys.executable when frozen so py2exe/compiled exe finds flips.exe beside the exe.
+if getattr(sys, 'frozen', False):  # Running as a bundled EXE.
+    script_dir = os.path.dirname(sys.executable)
 else:  # Running as a normal .py
-    flips_exe_path = os.path.join(script_dir, 'flips.exe')
+    script_dir = os.path.dirname(os.path.abspath(__file__))
 
-# If not found, try an alternative location (…/flips/flips.exe). Crash early if still missing.
+# Primary expected locations for flips.exe
+flips_exe_path = os.path.join(script_dir, 'flips.exe')
 if not os.path.exists(flips_exe_path):
     flips_exe_path = os.path.join(script_dir, 'flips', 'flips.exe')
-    if not os.path.exists(flips_exe_path):
-        raise FileNotFoundError("flips.exe is not found. Place it next to the app or in a 'flips' folder.")
+
+# If still not found, raise an error.
+if not os.path.exists(flips_exe_path):
+    raise FileNotFoundError("flips.exe is not found. Place it next to the app or in a 'flips' folder.")
 
 # Icon: check both ./ico/flips.ico (compiled EXE) and ./flips.ico (Python script), either is acceptable.
 icon_path = None
@@ -207,7 +209,7 @@ class AutoPatcherApp:
         ]
 
         # ------------------- Window skeleton -------------------
-        root.title("Flips Auto Patcher V2.0.0")
+        root.title("Flips Auto Patcher v2.0.0")
         root.geometry("1200x560")
 
         # Info/Output area (top big text box).
@@ -745,7 +747,7 @@ class AutoPatcherApp:
                 self.log_message(f"Selected Modified ROM file: {os.path.basename(rom)}")
                 self.display_modified_rom_hashes(rom)
                 self.log_message(f"Select the base ROM file.")
-                
+
             # (3) Pick the Base ROM second
             self.file_search_rom()
             if not self.base_rom:
