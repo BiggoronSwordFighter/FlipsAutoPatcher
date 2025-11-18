@@ -22,7 +22,7 @@ FlipsAutoPatcher-main/              <-- Root directory of the project.
 ├── main.py                         <-- Main script for the application.
 ├── utils.py                        <-- Utility file with functions for getting hash info.
 ├── open_with_handle.py             <-- Small helper module that isolates “Open with” code logic.
-├── README.txt                      <-- Project documentation or instructions.
+├── README.txt                      <-- Project documentation.
 ├── run.bat                         <-- Batch file to run main.py in Windows CMD.
 ├── setup.py                        <-- Setup script for packaging.
 ├── setup1.bat                      <-- First setup file (builds the EXE).
@@ -30,3 +30,4 @@ FlipsAutoPatcher-main/              <-- Root directory of the project.
 ├── flips.ico                       <-- Required Icon for the project (included).
 ├── flips.exe                       <-- Required EXE for the project (not included).
 └── COPYING                         <-- Project license file. 
+
