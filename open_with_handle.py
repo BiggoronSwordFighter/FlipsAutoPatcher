@@ -91,7 +91,7 @@ class OpenWithHandler:
         except Exception:
             pass
 
-        app.log_message("Select the modified ROM.")
+        app.log_message("Select the modified ROM(s).")
         modified = filedialog.askopenfilenames(
             title="Select The Modified ROM",
             filetypes=app.rom_file_types
