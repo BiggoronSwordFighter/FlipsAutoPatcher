@@ -70,12 +70,13 @@ else:  # Running as a normal .py
 flips_exe_path = os.path.join(script_dir, 'flips.exe')
 if not os.path.exists(flips_exe_path):
     flips_exe_path = os.path.join(script_dir, 'flips', 'flips.exe')
+    flips_exe_path = os.path.join(script_dir, '_internal/flips', 'flips.exe')
 
 # If still not found, raise an error.
 if not os.path.exists(flips_exe_path):
     raise FileNotFoundError("flips.exe is not found. Place it next to the app or in a 'flips' folder.")
 
-# Icon: check both ./ico/flips.ico (compiled EXE) and ./flips.ico (Python script), either is acceptable.
+# Icon: check both ./ico/flips.ico (compiled EXE) and ./flips.ico (Python script) for icon.
 icon_path = None
 main_icon_path = os.path.join(script_dir, 'ico', 'flips.ico')
 if os.path.exists(main_icon_path):
@@ -84,6 +85,11 @@ else:
     alt_icon_path = os.path.join(script_dir, 'flips.ico')
     if os.path.exists(alt_icon_path):
         icon_path = alt_icon_path
+    else:
+        internal_icon_path = os.path.join(script_dir, '_internal', 'ico', 'flips.ico')
+        if os.path.exists(internal_icon_path):
+            icon_path = internal_icon_path
+
 # ===== END SECTION A: Imports & Paths ============================================
 
 
@@ -613,7 +619,7 @@ class AutoPatcherApp:
         if info_message:
             self.log_message(info_message)
         file_types = self.rom_file_types
-        title = title_override or "Select The Base ROM File."
+        title = title_override or "Select the Base ROM File."
         base_rom_selection = filedialog.askopenfilename(title=title, filetypes=file_types)
         if base_rom_selection:
             self.base_rom = os.path.abspath(base_rom_selection)
@@ -634,7 +640,7 @@ class AutoPatcherApp:
             self.log_message(f"  MD5:   {md5}")
             self.log_message(f"  SHA-1: {sha1}")
             self.log_message(f"  ZLE:   {zle}")
-    # ----- END C4: Small utilities -----------------------------------------------s
+    # ----- END C4: Small utilities -----------------------------------------------
 
     # ----- START C5: Start button logic (file pickers + threads) -----------------
     def start_patching(self):
@@ -644,10 +650,10 @@ class AutoPatcherApp:
         if mode == "Auto Patch Files":
             # (1) Pick patch file(s) first.
             self.patch_files = filedialog.askopenfilenames(
-                title="Select Patch File(s)",
+                title="Select the Patch file (drag for multi-select).",
                 filetypes=[(".BPS Patch Files", "*.bps"), ("All Files", "*.*")]
                 if self.bps_ips_type.get() == ".bps"
-                else [(".IPS Patch Files", "*.ips"), ("All File     if not app.base_rom", "*.*")]
+                else [(".IPS Patch Files", "*.ips"), ("All Files", "*.*")]
             )
             if not self.patch_files:
                 self.log_message("No Patch Files selected.")
@@ -679,7 +685,7 @@ class AutoPatcherApp:
                         if f not in seen:
                             original.append(f)
                             seen.add(f)
-                    self.patch_files = original # Select the base ROM file
+                    self.patch_files = original # Select the Base ROM file
                 except Exception as e:
                     self.log_message(f"Search expansion error: {e}")
 
@@ -700,7 +706,7 @@ class AutoPatcherApp:
         elif mode == "Auto Create Patches":
             # (1) Pick Modified ROM first.
             self.modified_rom = filedialog.askopenfilenames(
-                title="Select The Modified ROM",
+                title="Select the Modified ROM file (drag for multi-select).",
                 filetypes=self.rom_file_types
             )
             if not self.modified_rom:
@@ -740,7 +746,7 @@ class AutoPatcherApp:
                     self.log_message(f"Search expansion error: {e}")
 
 
-            # (2a) Immediately show hashes for the selected Modified ROM(s) (before Base ROM prompt)
+            # (2a) Immediately show hashes for the selected Modified ROMs (before Base ROM prompt).
             #     This ensures the Info/Output box populates right after the first dialog,
             #     matching the behavior of “Auto Patch Files” when expanded search is enabled.
             for rom in self.modified_rom:
@@ -800,6 +806,10 @@ class AutoPatcherApp:
 # ===== START SECTION D: Program start ============================================
 if __name__ == "__main__":
     root = tk.Tk()
+    # Window fix for compiled exe - make window movable/resizable
+    root.resizable(True, True)
+    root.minsize(800, 500)
     app = AutoPatcherApp(root)
     root.mainloop()
 # ===== END SECTION D: Program start ==============================================
+
