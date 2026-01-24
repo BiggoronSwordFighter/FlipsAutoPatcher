@@ -91,7 +91,7 @@ class OpenWithHandler:
         except Exception:
             pass
 
-        app.log_message("Select the modified ROM(s).")
+        app.log_message("Select the modified ROM.")
         modified = filedialog.askopenfilenames(
             title="Select The Modified ROM",
             filetypes=app.rom_file_types
@@ -193,6 +193,8 @@ class OpenWithHandler:
         except Exception: pass
         dlg.transient(app.root)
         dlg.grab_set()
+        dlg.resizable(True, True)
+        dlg.minsize(400, 200)
 
         tk.Label(
             dlg,
@@ -238,9 +240,12 @@ class OpenWithHandler:
         except Exception: pass
         dlg.transient(app.root)
         dlg.grab_set()
+        dlg.resizable(True, True)
+        dlg.minsize(400, 80)
 
-        tk.Label(dlg, text="Is this file a Base ROM or a Modified ROM?", justify="left",
-                 padx=14, pady=10).pack(anchor="w")
+        tk.Label(dlg, text="Selecting \"Base ROM\" puts you in Patching Mode.\nSelecting \"Modified ROM\" puts you into Patch Create Mode.",
+            justify="left",
+            padx=14, pady=10).pack(anchor="w")
 
         btns = tk.Frame(dlg); btns.pack(pady=(6, 10))
 
