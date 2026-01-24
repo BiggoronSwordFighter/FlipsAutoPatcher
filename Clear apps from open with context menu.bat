@@ -2,9 +2,14 @@
 
 set APPS=flips.exe FlipsAutoPatcher.exe FlipsAutoPatcher-v2.0.0.exe
 
-echo Removing Flips entries from Windows 11 Open With...
+echo Remove Flips entries from Windows 11 Open With Context Menu?
 echo.
+set /p CONFIRM=Are you sure you want to continue? (Y/N): 
+if /i not "%CONFIRM%"=="Y" (
+    exit /b
+)
 
+echo.
 for %%A in (%APPS%) do (
 
   echo Removing %%A ...
