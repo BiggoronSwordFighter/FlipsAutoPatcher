@@ -34,3 +34,4 @@ pyinstaller ^
 echo.
 echo Build complete!
 pause
+
