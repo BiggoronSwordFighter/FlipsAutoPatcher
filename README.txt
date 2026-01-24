@@ -1,6 +1,7 @@
 This is a third party tool extension for flips.exe that's used for auto patching ROMs. 
-To build you'll need to add flips.exe to the root folder (where you find main.py), then you'll run the files "setup1.bat" and "setup2.bat" in order. 
-After doing so, you'll find FlipsAutoPatcher-v1.2.2.EXE in the "/dist/" directory, copy the contents of the dist folder wherever you want.
+To build you'll need to make sure to add "flips.exe" inside the "/flips/" directory, 
+then run "build.bat". After doing so, you'll find "FlipsAutoPatcher-v2.0.0.exe" in the 
+"/dist/" directory, copy the contents of the dist folder wherever you want.
 
 v2.0.0
 FlipsAutoPatcher-main/
@@ -20,3 +21,4 @@ FlipsAutoPatcher-main/
 ├── other dependencies/             # Optional additional bundled files
 ├── README.txt                      # Project documentation
 └── COPYING                         # Project license file
+
