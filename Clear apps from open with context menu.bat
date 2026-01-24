@@ -1,6 +1,7 @@
 @echo off
 
-set APPS=flips.exe FlipsAutoPatcher.exe FlipsAutoPatcher-v2.0.0.exe
+# Put the name of the files that you wish to remove here.
+set APPS=FlipsAutoPatcher-v2.0.0.exe file2.exe file3.exe 
 
 echo Remove Flips entries from Windows 11 Open With Context Menu?
 echo.
@@ -34,3 +35,4 @@ start explorer.exe
 
 echo Done. Entries should now be GONE.
 pause
+
