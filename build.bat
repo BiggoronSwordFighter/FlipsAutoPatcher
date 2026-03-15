@@ -28,7 +28,7 @@ pyinstaller ^
     --icon=ico/flips.ico ^
     --add-data "ico;ico" ^
     --add-data "flips;flips" ^
-    --name "FlipsAutoPatcher-v2.0.0" ^
+    --name "FlipsAutoPatcher-v2.1.1" ^
     main.py
 
 echo.
