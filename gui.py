@@ -235,7 +235,7 @@ def build_main_gui(app, root, *, icon_path, script_dir):
     add_tooltip(
         app.trim_64mb_checkbox,
         'N64 hardware feature: Might fix the "File is too large" error for some ROMs on flash carts '
-        '(mostly Ocarina of Time MQ) by trimming "garbage data" past 64MB.\n\n'
+        '(mostly Ocarina of Time MQ Debug) by trimming "garbage data" past 64MB.\n\n'
         'Warning: Can produce a broken ROM. The data past 64MB gets omitted completely and this experimental '
         'feature may introduce bugs or crashes if you accidentally delete any sensitive code.',
     )
@@ -256,7 +256,7 @@ def build_main_gui(app, root, *, icon_path, script_dir):
         "• Ignores all file-select dialogs after you press Start\n"
         "• Automatically patches every .bps/.ips in the Patch Files folder\n"
         "• .bps: selects the correct base ROM by Source CRC32 (patch metadata)\n"
-        "• .ips: tries each base ROM until the patch applies successfully\n"
+        "• .ips: does not store a source ROM hash. instead, it checks for ROMs that match the expected truncate size.\n"
         "• Endian swapping and 64MB trimming only apply to Nintendo 64 ROMs\n",
     )
 
