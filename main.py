@@ -902,7 +902,7 @@ class AutoPatcherApp:
 
         tk.Label(
             outer,
-            text="Available ROM types: " + ", ".join(rom_type_options),
+            text="Available ROM types: " + ", ".join(rom_type_options) + ".",
             justify="left",
             anchor="w",
             wraplength=420,
@@ -918,7 +918,7 @@ class AutoPatcherApp:
         def cancel():
             dialog.destroy()
 
-        tk.Button(button_row, text="OK", width=10, command=confirm).pack(side="left")
+        tk.Button(button_row, text="Apply", width=10, command=confirm).pack(side="left")
         tk.Button(button_row, text="Cancel", width=10, command=cancel).pack(side="left", padx=(8, 0))
 
         combo.bind("<Return>", lambda _e: add_selected_type())
@@ -1190,7 +1190,7 @@ class AutoPatcherApp:
             wraplength=500,
             bg="#f0f0f0",
             text=(
-                "Create ROM creates a patched ROM file but does not launch the emulator.\n"
+                "Create ROM creates a patched ROM file but won't launch the emulator.\n"
                 "Run in emulator behaves like Flips' association mode: after patching, the new ROM is launched\n"
                 "with the emulator assigned to that ROM type.\n"
                 "Automatic ROM selector only applies to BPS patches and reuses a previously matched base ROM when the source CRC32 still matches."

@@ -241,6 +241,9 @@ class GUILogger:
             "Cleared all emulator assignments.",
             "Registered Windows file types for .bps and .ips.",
             "Cleared .bps/.ips file associations and icon cache.",
+            "Icon path:",
+            "Open command:",
+            "Clearing icon cache in the background...",
         )
 
         # Optional BEFORE matches for text that may appear in the middle of a line.
@@ -287,6 +290,14 @@ class GUILogger:
             "opened with patch file:",
             "opened with base rom file:",
             "opened with modified rom file:",
+
+            # Settings button
+            "Clearing icon cache in the background...",
+            "Cleared .bps/.ips file associations and icon cache.",
+            "Icon cache task finished.",
+            "Clearing Open With history in the background...",
+            "Cleared current-user Open With history for supported patch/app launcher file types.",
+            "Context menu cleanup task finished.",
         )
 
         # Optional AFTER matches for text that may appear in the middle of a line.
