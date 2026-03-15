@@ -20,7 +20,20 @@ import tkinter as tk
 from tkinter import filedialog
 
 class OpenWithHandler:
-    """ This class encapsulates "Open with …" behavior.
+    """Encapsulate all "Open with …" startup behavior for the GUI.
+
+    Design goal
+    -----------
+    main.py stays focused on the main application logic, while this helper owns
+    the special startup flow that happens when Windows launches the app with a
+    pre-selected file.
+
+    In other words:
+    - main.py owns the full application
+    - this class decides how to *start* the application when a file was passed in
+    - the real patch/create work still goes back through app methods
+
+    The main GUI application (main.py) must provide these parameters:
 
         The main GUI application (main.py) must provide these parameters:
         - update_patch_method(str)
@@ -42,6 +55,15 @@ class OpenWithHandler:
 
     # -------------------- Public entry point --------------------
     def handle_startup_file(self, file_path: str):
+        """Route a startup file into the correct workflow.
+
+        This is the first method called by main.py after the main window exists.
+        We inspect the file extension and then choose one of three paths:
+
+        1) Patch file (.bps/.ips)  -> start patching flow
+        2) Known ROM extension      -> ask whether it is Base or Modified
+        3) Unknown extension        -> ask whether it should be treated as ROM or Patch
+        """
         # Respond to OS 'Open with' action (when the user double-clicks or uses context menu).
         ext = os.path.splitext(file_path)[1].lower()
         patch_exts = {".bps", ".ips"}
@@ -57,13 +79,15 @@ class OpenWithHandler:
 
     # ------------------------ Internals -------------------------
     def _start_patch_flow_with_preselected_patch(self, patch_path: str, ext: str):
+        """Start Auto Patch Files mode using a patch file that was already chosen by the OS.
+
+        Example: the user right-clicks a .bps file and chooses
+        "Open with Flips Auto Patcher".
+        """
         app = self.app
+        app.reset_file_selections()
         app.update_patch_method("Auto Patch Files")
-        app.bps_ips_type.set(ext)
-        try:
-            app.select_file_button.config(text=ext.upper())
-        except Exception:
-            pass
+        app.select_files(ext)
 
         app.patch_files = [os.path.abspath(patch_path)]
         app.log_message(f"Opened with Patch File: {os.path.basename(patch_path)}")
@@ -72,17 +96,106 @@ class OpenWithHandler:
         except Exception:
             pass
 
-        app.log_message("Select the base ROM file.")
-        app.file_search_rom(info_message=None)
+        # Ask the user for the required clean/original ROM that matches the patch,
+        # unless automatic ROM selection finds a remembered BPS match.
+        if not app._try_auto_select_base_rom_for_patch_files(app.patch_files):
+            app.log_message("Select the Base ROM file.")
+            app.file_search_rom(info_message=None)
         if not app.base_rom:
             return
 
+        # Start the patch job on a background thread so the GUI stays responsive.
         app.log_message("Patching process has started.")
         from threading import Thread
         Thread(target=app.apply_patches, daemon=True).start()
 
-    def _start_create_flow_with_preselected_base_rom(self, base_path: str):
+
+    def _start_patch_flow_with_preselected_base_rom(self, base_path: str):
+        """Start Auto Patch Files mode when the startup file is the Base ROM.
+
+        Flow summary
+        ------------
+        - store the base ROM path immediately
+        - let the user choose one or more patch files
+        - optionally expand the selection using the current search-scope setting
+        - show patch metadata so the user can verify the selection
+        - start the patching thread
+        """
         app = self.app
+        app.reset_file_selections()
+        app.update_patch_method("Auto Patch Files")
+        app.base_rom = os.path.abspath(base_path)
+        app.log_message(f"Opened with Base ROM file: {os.path.basename(base_path)}")
+        try:
+            app.display_base_rom_hashes()
+        except Exception:
+            pass
+
+        patch_ext = str(app.bps_ips_type.get()).lower()
+        filetypes = [('.BPS Patch Files', '*.bps'), ('All Files', '*.*')] if patch_ext == '.bps' else [('.IPS Patch Files', '*.ips'), ('All Files', '*.*')]
+        app.patch_files = filedialog.askopenfilenames(
+            title='Select the Patch file (drag for multi-select).',
+            filetypes=filetypes,
+        )
+        if not app.patch_files:
+            app.log_message('No Patch Files selected.')
+            return
+
+        try:
+            scope = app.search_scope.get()
+            base_dir = os.path.dirname(os.path.abspath(app.patch_files[0]))
+            target_ext = '.bps' if patch_ext == '.bps' else '.ips'
+            collected = []
+            if scope == 'enable':
+                for root, _, files in os.walk(base_dir):
+                    for fname in files:
+                        if fname.lower().endswith(target_ext):
+                            collected.append(os.path.join(root, fname))
+            elif scope == 'directory':
+                try:
+                    for fname in os.listdir(base_dir):
+                        full = os.path.join(base_dir, fname)
+                        if os.path.isfile(full) and fname.lower().endswith(target_ext):
+                            collected.append(full)
+                except Exception:
+                    pass
+
+            original = list(app.patch_files)
+            seen = set(os.path.abspath(x) for x in original)
+            for f in collected:
+                af = os.path.abspath(f)
+                if af not in seen:
+                    original.append(af)
+                    seen.add(af)
+            app.patch_files = original
+        except Exception as e:
+            app.log_message(f'Search expansion error: {e}')
+            app.patch_files = list(app.patch_files)
+
+        for patch_file in app.patch_files:
+            app.log_message(f'Selected Patch File: {os.path.basename(patch_file)}')
+            try:
+                app.display_patch_metadata(patch_file)
+            except Exception:
+                pass
+
+        app.log_message('Patching process has started.')
+        from threading import Thread
+        Thread(target=app.apply_patches, daemon=True).start()
+
+    def _start_create_flow_with_preselected_base_rom(self, base_path: str):
+        """Start Auto Create Patches mode when the startup file is the Base ROM.
+
+        Flow summary
+        ------------
+        - store the base ROM path
+        - let the user choose one or more modified ROMs
+        - optionally expand the selection using the current search-scope setting
+        - remove duplicates / illegal entries
+        - start the patch-creation thread
+        """
+        app = self.app
+        app.reset_file_selections()
         app.update_patch_method("Auto Create Patches")
         app.base_rom = os.path.abspath(base_path)
         app.log_message(f"Opened with Base ROM file: {os.path.basename(base_path)}")
@@ -91,7 +204,9 @@ class OpenWithHandler:
         except Exception:
             pass
 
-        app.log_message("Select the modified ROM.")
+        # Prompt for one or more modified ROM files that should be compared
+        # against the base ROM to build patch files.
+        app.log_message("Select the Modified ROM.")
         modified = filedialog.askopenfilenames(
             title="Select The Modified ROM",
             filetypes=app.rom_file_types
@@ -100,7 +215,11 @@ class OpenWithHandler:
             app.log_message("No Modified ROM file selected.")
             return
 
-        # Expand per current search_scope.
+        # Expand the list according to the current search_scope setting.
+        #
+        # search_scope == "enable"   -> walk subfolders too
+        # search_scope == "directory"-> only inspect the current folder
+        # anything else               -> use exactly what the user selected
         try:
             scope = app.search_scope.get()
             base_dir = os.path.dirname(os.path.abspath(modified[0]))
@@ -133,7 +252,9 @@ class OpenWithHandler:
             app.log_message(f"Search expansion error: {e}")
             app.modified_rom = list(modified)
 
-        # Ignore if base modified ROM are the same.
+        # Remove impossible / duplicate entries.
+        # A ROM cannot be both the Base ROM and the Modified ROM in the same
+        # patch-creation operation.
         abs_base = os.path.abspath(app.base_rom)
         cleaned = []
         seen = set()
@@ -152,6 +273,8 @@ class OpenWithHandler:
             return
 
         for rom in app.modified_rom:
+            # Log each selected modified ROM and then display its hashes so the
+            # user can verify they picked the intended file.
             app.log_message(f"Select the Modified ROM file: {os.path.basename(rom)}")
             try:
                 app.display_modified_rom_hashes(rom)
@@ -164,7 +287,13 @@ class OpenWithHandler:
         Thread(target=app.create_patches, daemon=True).start()
 
     def _start_create_flow_with_preselected_modified_rom(self, mod_path: str):
+        """Start Auto Create Patches mode when the startup file is the Modified ROM.
+
+        In this version of the flow, the user launched the app from a modified
+        ROM first, so we store that immediately and then ask for the Base ROM.
+        """
         app = self.app
+        app.reset_file_selections()
         app.update_patch_method("Auto Create Patches")
 
         app.modified_rom = [os.path.abspath(mod_path)]
@@ -174,6 +303,8 @@ class OpenWithHandler:
         except Exception:
             pass
 
+        # Ask for the clean/original ROM that will be compared against the
+        # preselected modified ROM.
         app.file_search_rom(title_override="Select The Base ROM file", info_message="Select the Base ROM file.")
         if not app.base_rom:
             return
@@ -183,8 +314,15 @@ class OpenWithHandler:
         from threading import Thread
         Thread(target=app.create_patches, daemon=True).start()
 
+    # ------------------------------------------------------------------
+    # Small helper dialogs
+    # ------------------------------------------------------------------
+    # These dialogs only decide *how to route* the startup file. They do not
+    # perform the actual patching work themselves.
+
     # First Open-With dialog window.
     def _ask_rom_or_patch(self, file_path: str):
+        """Ask the user whether an unknown startup file should be treated as ROM or Patch."""
         app = self.app
         dlg = tk.Toplevel(app.root)
         dlg.title("Is this file a ROM or Patch?")
@@ -206,6 +344,8 @@ class OpenWithHandler:
 
         btns = tk.Frame(dlg); btns.pack(pady=(6, 10))
 
+        # Button callbacks are nested here because they only matter to this
+        # one dialog instance.
         def _choose_rom():
             try: dlg.destroy()
             finally: self._ask_base_or_modified(file_path)
@@ -232,6 +372,7 @@ class OpenWithHandler:
 
     # Second Open-With dialog window.
     def _ask_base_or_modified(self, file_path: str):
+        """Ask whether a ROM file should be treated as Base ROM or Modified ROM."""
         app = self.app
         dlg = tk.Toplevel(app.root)
         dlg.title("Is this file a Base ROM or a Modified ROM?")
@@ -251,7 +392,7 @@ class OpenWithHandler:
 
         def _choose_base():
             try: dlg.destroy()
-            finally: self._start_create_flow_with_preselected_base_rom(file_path)
+            finally: self._start_patch_flow_with_preselected_base_rom(file_path)
 
         def _choose_modified():
             try: dlg.destroy()
