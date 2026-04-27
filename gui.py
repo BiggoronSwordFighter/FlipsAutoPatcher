@@ -23,6 +23,10 @@ class ToolTip:
     """Very small helper that shows a tooltip when you hover a widget."""
 
     def __init__(self, widget, text, delay=500, wraplength=420):
+        """__init__ helper.
+
+        Guidance: keep inputs validated, prefer existing shared helpers, and log user-visible status through the current workflow logger when appropriate.
+        """
         self.widget = widget
         self.text = text
         self.delay = delay
@@ -34,10 +38,18 @@ class ToolTip:
         widget.bind("<ButtonPress>", self._hide)
 
     def _schedule(self, event=None):
+        """_schedule helper.
+
+        Guidance: keep inputs validated, prefer existing shared helpers, and log user-visible status through the current workflow logger when appropriate.
+        """
         self._cancel()
         self._after_id = self.widget.after(self.delay, self._show)
 
     def _cancel(self):
+        """_cancel helper.
+
+        Guidance: keep inputs validated, prefer existing shared helpers, and log user-visible status through the current workflow logger when appropriate.
+        """
         if self._after_id:
             try:
                 self.widget.after_cancel(self._after_id)
@@ -46,6 +58,10 @@ class ToolTip:
             self._after_id = None
 
     def _show(self):
+        """_show helper.
+
+        Guidance: keep inputs validated, prefer existing shared helpers, and log user-visible status through the current workflow logger when appropriate.
+        """
         if self._tip or not self.text:
             return
         try:
@@ -68,6 +84,10 @@ class ToolTip:
         label.pack(ipadx=6, ipady=4)
 
     def _hide(self, event=None):
+        """_hide helper.
+
+        Guidance: keep inputs validated, prefer existing shared helpers, and log user-visible status through the current workflow logger when appropriate.
+        """
         self._cancel()
         if self._tip:
             try:
@@ -78,10 +98,16 @@ class ToolTip:
 
 
 def add_tooltip(widget, text, delay=500):
+    """add_tooltip helper.
+
+    Guidance: keep inputs validated, prefer existing shared helpers, and log user-visible status through the current workflow logger when appropriate.
+    """
     try:
         ToolTip(widget, text, delay=delay)
     except Exception:
         pass
+
+
 
 
 def build_main_gui(app, root, *, icon_path, script_dir):
@@ -92,8 +118,9 @@ def build_main_gui(app, root, *, icon_path, script_dir):
     except tk.TclError:
         pass
 
-    root.title("Flips Auto Patcher v2.1.1")
-    root.geometry("1200x560")
+    root.title("Flips Auto Patcher v2.3.1")
+    root.geometry("1500x700")
+    root.minsize(1360, 680)
 
     output_frame = tk.Frame(root)
     output_frame.pack(fill="both", expand=True, padx=20, pady=(10, 0))
@@ -256,7 +283,7 @@ def build_main_gui(app, root, *, icon_path, script_dir):
         "• Ignores all file-select dialogs after you press Start\n"
         "• Automatically patches every .bps/.ips in the Patch Files folder\n"
         "• .bps: selects the correct base ROM by Source CRC32 (patch metadata)\n"
-        "• .ips: does not store a source ROM hash. instead, it checks for ROMs that match the expected truncate size.\n"
+        "• .ips: does not store a source ROM hash. instead, it sorts for ROMs that match the expected truncate size, then tries applying the IPS until one succeeds.\n"
         "• Endian swapping and 64MB trimming only apply to Nintendo 64 ROMs\n",
     )
 
@@ -288,7 +315,7 @@ def build_main_gui(app, root, *, icon_path, script_dir):
         command=lambda: app.byteswap_button.config(text="Disable endian swapping"),
     )
     app.byteswap_button.configure(menu=app.byteswap_menu)
-    app.byteswap_button.grid(row=0, column=5, padx=5, pady=2, ipady=2, sticky="w")
+    app.byteswap_button.grid(row=0, column=6, padx=5, pady=2, ipady=2, sticky="w")
     add_tooltip(
         app.byteswap_button,
         "Nintendo 64 ROMs can exist in 3 byte orders (Z64/N64/V64).\n"
@@ -323,7 +350,15 @@ def build_main_gui(app, root, *, icon_path, script_dir):
         command=lambda: app.search_scope_button.config(text="Disable expanded file search"),
     )
     app.search_scope_button.configure(menu=app.search_scope_menu)
-    app.search_scope_button.grid(row=0, column=4, padx=5, pady=2, ipady=2, sticky="w")
+    app.search_scope_button.grid(row=0, column=5, padx=5, pady=2, ipady=2, sticky="w")
+
+    app.rom_header_options_button = tk.Button(
+        opts_row,
+        text="ROM Header Options",
+        command=app.open_rom_header_options,
+    )
+    app._uniform_button(app.rom_header_options_button)
+    app.rom_header_options_button.grid(row=0, column=4, padx=5, pady=2, ipady=2, sticky="w")
     add_tooltip(
         app.search_scope_button,
         "After you pick one file, optionally add more from the same folder:\n"
@@ -332,5 +367,10 @@ def build_main_gui(app, root, *, icon_path, script_dir):
         "• Disable – use only what you picked.",
     )
 
-    for c in range(6):
+    add_tooltip(
+        app.rom_header_options_button,
+        "Open ROM header options.",
+    )
+
+    for c in range(7):
         opts_row.grid_columnconfigure(c, weight=1)
