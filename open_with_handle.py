@@ -19,6 +19,8 @@ import os
 import tkinter as tk
 from tkinter import filedialog
 
+from utils import log_operation_paths
+
 class OpenWithHandler:
     """Encapsulate all "Open with …" startup behavior for the GUI.
 
@@ -50,8 +52,50 @@ class OpenWithHandler:
     # The path to the window icon is "icon_path : str|None", which is used by the small dialogs that pop up.
 
     def __init__(self, app, icon_path: str | None):
+        """__init__ helper.
+
+        Guidance: keep inputs validated, prefer existing shared helpers, and log user-visible status through the current workflow logger when appropriate.
+        """
         self.app = app
         self.icon_path = icon_path
+
+    def _log_pending_apply_paths(self):
+        """Show the path block for the current apply selection before the job starts."""
+        app = self.app
+        base_rom = getattr(app, "base_rom", None)
+        for patch_file_path in list(getattr(app, "patch_files", []) or []):
+            try:
+                base_ext = os.path.splitext(str(base_rom or ""))[1]
+                patch_base = os.path.splitext(str(patch_file_path))[0]
+                append_suffix = bool(app.append_suffix.get())
+                output_path = (patch_base + "_patched" + base_ext) if append_suffix else (patch_base + base_ext)
+            except Exception:
+                output_path = None
+
+            log_operation_paths(
+                app.log_message,
+                patch_file_path=patch_file_path,
+                base_rom_path=base_rom,
+                output_file_path=output_path,
+            )
+
+    def _log_pending_create_paths(self):
+        """Show the path block for the current create selection before the job starts."""
+        app = self.app
+        base_rom = getattr(app, "base_rom", None)
+        patch_ext = ".ips" if str(app.bps_ips_type.get()) == ".ips" else ".bps"
+        append_suffix = bool(app.append_suffix.get())
+
+        for rom in list(getattr(app, "modified_rom", []) or []):
+            rom_base = os.path.splitext(str(rom))[0]
+            patch_file_path = rom_base + ("_patched" if append_suffix else "") + patch_ext
+            log_operation_paths(
+                app.log_message,
+                patch_file_path=patch_file_path,
+                base_rom_path=base_rom,
+                modified_rom_path=rom,
+                output_file_path=patch_file_path,
+            )
 
     # -------------------- Public entry point --------------------
     def handle_startup_file(self, file_path: str):
@@ -91,10 +135,6 @@ class OpenWithHandler:
 
         app.patch_files = [os.path.abspath(patch_path)]
         app.log_message(f"Opened with Patch File: {os.path.basename(patch_path)}")
-        try:
-            app.display_patch_metadata(patch_path)
-        except Exception:
-            pass
 
         # Ask the user for the required clean/original ROM that matches the patch,
         # unless automatic ROM selection finds a remembered BPS match.
@@ -104,10 +144,20 @@ class OpenWithHandler:
         if not app.base_rom:
             return
 
+        try:
+            app.display_patch_metadata(patch_path)
+        except Exception:
+            pass
+
         # Start the patch job on a background thread so the GUI stays responsive.
-        app.log_message("Patching process has started.")
-        from threading import Thread
-        Thread(target=app.apply_patches, daemon=True).start()
+        self._log_pending_apply_paths()
+        starter = getattr(app, "_start_background_job", None)
+        if callable(starter):
+            starter(app.apply_patches, busy_message="Patching process has started.")
+        else:
+            app.log_message("Patching process has started.")
+            from threading import Thread
+            Thread(target=app.apply_patches, daemon=True).start()
 
 
     def _start_patch_flow_with_preselected_base_rom(self, base_path: str):
@@ -179,9 +229,14 @@ class OpenWithHandler:
             except Exception:
                 pass
 
-        app.log_message('Patching process has started.')
-        from threading import Thread
-        Thread(target=app.apply_patches, daemon=True).start()
+        self._log_pending_apply_paths()
+        starter = getattr(app, "_start_background_job", None)
+        if callable(starter):
+            starter(app.apply_patches, busy_message='Patching process has started.')
+        else:
+            app.log_message('Patching process has started.')
+            from threading import Thread
+            Thread(target=app.apply_patches, daemon=True).start()
 
     def _start_create_flow_with_preselected_base_rom(self, base_path: str):
         """Start Auto Create Patches mode when the startup file is the Base ROM.
@@ -281,10 +336,15 @@ class OpenWithHandler:
             except Exception:
                 pass
 
+        self._log_pending_create_paths()
         app.log_message("Patch creation process has started.")
         app.log_message("Note: for Nintendo 64 ROMs this will take time.")
-        from threading import Thread
-        Thread(target=app.create_patches, daemon=True).start()
+        starter = getattr(app, "_start_background_job", None)
+        if callable(starter):
+            starter(app.create_patches, busy_message="Patch creation process has started.")
+        else:
+            from threading import Thread
+            Thread(target=app.create_patches, daemon=True).start()
 
     def _start_create_flow_with_preselected_modified_rom(self, mod_path: str):
         """Start Auto Create Patches mode when the startup file is the Modified ROM.
@@ -309,10 +369,15 @@ class OpenWithHandler:
         if not app.base_rom:
             return
 
+        self._log_pending_create_paths()
         app.log_message("Patch creation process has started.")
         app.log_message("Note: for Nintendo 64 ROMs this will take time.")
-        from threading import Thread
-        Thread(target=app.create_patches, daemon=True).start()
+        starter = getattr(app, "_start_background_job", None)
+        if callable(starter):
+            starter(app.create_patches, busy_message="Patch creation process has started.")
+        else:
+            from threading import Thread
+            Thread(target=app.create_patches, daemon=True).start()
 
     # ------------------------------------------------------------------
     # Small helper dialogs
@@ -347,14 +412,26 @@ class OpenWithHandler:
         # Button callbacks are nested here because they only matter to this
         # one dialog instance.
         def _choose_rom():
+            """_choose_rom helper.
+
+            Guidance: keep inputs validated, prefer existing shared helpers, and log user-visible status through the current workflow logger when appropriate.
+            """
             try: dlg.destroy()
             finally: self._ask_base_or_modified(file_path)
 
         def _choose_patch():
+            """_choose_patch helper.
+
+            Guidance: keep inputs validated, prefer existing shared helpers, and log user-visible status through the current workflow logger when appropriate.
+            """
             try: dlg.destroy()
             finally: self._start_patch_flow_with_preselected_patch(file_path, ".bps")
 
         def _on_close():
+            """_on_close helper.
+
+            Guidance: keep inputs validated, prefer existing shared helpers, and log user-visible status through the current workflow logger when appropriate.
+            """
             try: dlg.destroy()
             finally: app.log_message("No valid ROM or Patch file selected.")
 
@@ -391,14 +468,26 @@ class OpenWithHandler:
         btns = tk.Frame(dlg); btns.pack(pady=(6, 10))
 
         def _choose_base():
+            """_choose_base helper.
+
+            Guidance: keep inputs validated, prefer existing shared helpers, and log user-visible status through the current workflow logger when appropriate.
+            """
             try: dlg.destroy()
             finally: self._start_patch_flow_with_preselected_base_rom(file_path)
 
         def _choose_modified():
+            """_choose_modified helper.
+
+            Guidance: keep inputs validated, prefer existing shared helpers, and log user-visible status through the current workflow logger when appropriate.
+            """
             try: dlg.destroy()
             finally: self._start_create_flow_with_preselected_modified_rom(file_path)
 
         def _on_close():
+            """_on_close helper.
+
+            Guidance: keep inputs validated, prefer existing shared helpers, and log user-visible status through the current workflow logger when appropriate.
+            """
             try: dlg.destroy()
             finally: app.log_message("No action or change occured.")
 

@@ -48,11 +48,12 @@ import subprocess
 import sys
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
-from threading import Thread
+from threading import Thread, Lock
 import json
 import platform
 import glob
 import time
+import tempfile
 
 try:
     import winreg
@@ -62,10 +63,11 @@ except Exception:
 # Import "Open with …" logic (open_with_handle.py).
 from open_with_handle import OpenWithHandler
 from gui import build_main_gui
+from rom_header_options import open_rom_header_options
 
 # Import utility functions (utils.py).
 # These helpers compute hashes (CRC32, MD5, SHA1, ZLE) and read .bps metadata.
-from utils import calculate_crc32, calculate_md5, calculate_sha1, calculate_zle_hash, get_patch_metadata, get_ips_metadata
+from utils import calculate_crc32, calculate_md5, calculate_sha1, calculate_zle_hash, get_patch_metadata, get_ips_metadata, log_operation_paths, format_log_field, has_ines_header, has_snes_copier_header, remove_ines_header_bytes, remove_snes_copier_header_bytes, rewrite_rom_file_with_header_options, normalize_rom_extension, validate_ips_base_rom, get_rom_family_display
 
 # Import Nintendo 64 ROM endian swap helpers (rom_byteswap.py).
 # Used by the optional Byte-Swap feature in the GUI.
@@ -165,6 +167,13 @@ class AutoPatcherApp:
         self.append_suffix = tk.BooleanVar(value=False)
         self.trim_64mb = tk.BooleanVar(value=False)
         self.bulk_packages = tk.BooleanVar(value=False)
+        self.bulk_enable_ips = tk.BooleanVar(value=False)
+        self.add_ines_header = tk.BooleanVar(value=False)
+        self.remove_ines_header = tk.BooleanVar(value=False)
+        self.temp_remove_ines_header = tk.BooleanVar(value=False)
+        self.add_snes_header = tk.BooleanVar(value=False)
+        self.remove_snes_header = tk.BooleanVar(value=False)
+        self.temp_remove_snes_header = tk.BooleanVar(value=False)
         self.byteswap_mode = tk.StringVar(value="disable")
         self.search_scope = tk.StringVar(value="disable")
         self.emulator_path = tk.StringVar(value="")
@@ -173,6 +182,7 @@ class AutoPatcherApp:
         self.auto_rom_selector = tk.BooleanVar(value=False)
         self.rom_autoselect_cache = {}
         self.settings_window = None
+        self.rom_header_options_window = None
         self._settings_busy = False
         self._settings_cleanup_buttons = []
         if getattr(sys, "frozen", False):
@@ -182,21 +192,37 @@ class AutoPatcherApp:
         os.makedirs(settings_dir, exist_ok=True)
         self.settings_json_path = os.path.join(settings_dir, "flips_auto_patcher_settings.json")
         self.rom_type_options = [
-            "nes", "sfc", "smc", "gba", "gbc",
+            "nes", "fds", "unf", "unif",
+            "sfc", "smc", "swc", "fig",
+            "gba", "agb",
+            "gb", "gbc", "cgb",
+            "sms", "gg", "sg", "pce",
             "gen", "md", "bin", "rom",
             "z64", "n64", "v64",
-            "sms", "pce",
         ]
+        self._patch_job_lock = Lock()
+        self._patch_job_running = False
 
         # File type filters for ROM pickers.
         self.rom_file_types = [
-            ("Common ROM Extensions", "*.nes *.sfc *.smc *.gba *.gbc *.gen *.md *.bin *.rom *.z64 *.n64 *.v64 *.sms *.pce"),
+            ("Common ROM Extensions", "*.nes *.fds *.unf *.unif *.sfc *.smc *.swc *.fig *.gba *.agb *.gb *.gbc *.cgb *.sms *.gg *.sg *.pce *.gen *.md *.bin *.rom *.z64 *.n64 *.v64"),
             ("All Files", "*.*")
         ]
 
         # Delegate all visible Tkinter widget creation to gui.py.
         build_main_gui(self, root, icon_path=icon_path, script_dir=script_dir)
         self.load_app_settings(log_result=False)
+        # ROM Header Options should always start disabled on app launch,
+        # even if previous app settings saved one of them as enabled.
+        try:
+            self.add_ines_header.set(False)
+            self.remove_ines_header.set(False)
+            self.temp_remove_ines_header.set(False)
+            self.add_snes_header.set(False)
+            self.remove_snes_header.set(False)
+            self.temp_remove_snes_header.set(False)
+        except Exception:
+            pass
         self._sync_option_states()
 
         # ---- START C1a: Handle “Open with …” startup file (if any) ----
@@ -348,6 +374,44 @@ class AutoPatcherApp:
             w.configure(relief=tk.RAISED, borderwidth=1, highlightthickness=0)
         except Exception:
             pass
+
+    def _set_patch_job_running(self, running: bool):
+        with self._patch_job_lock:
+            self._patch_job_running = bool(running)
+        try:
+            if hasattr(self, 'start_button') and self.start_button and self.start_button.winfo_exists():
+                self.start_button.configure(state=(tk.DISABLED if running else tk.NORMAL))
+        except Exception:
+            pass
+
+    def _try_begin_patch_job(self) -> bool:
+        with self._patch_job_lock:
+            if self._patch_job_running:
+                return False
+            self._patch_job_running = True
+        try:
+            if hasattr(self, 'start_button') and self.start_button and self.start_button.winfo_exists():
+                self.start_button.configure(state=tk.DISABLED)
+        except Exception:
+            pass
+        return True
+
+    def _run_background_patch_job(self, target, *, busy_message: str) -> bool:
+        if not self._try_begin_patch_job():
+            self.log_message(busy_message)
+            return False
+
+        def _worker():
+            try:
+                target()
+            finally:
+                try:
+                    self.root.after(0, lambda: self._set_patch_job_running(False))
+                except Exception:
+                    self._set_patch_job_running(False)
+
+        Thread(target=_worker, daemon=True).start()
+        return True
     # ----- END C1: GUI build ------------------------------------------------------
 
     # ----- START C2: Config Save/Load ---------------------------------------------
@@ -363,6 +427,9 @@ class AutoPatcherApp:
                 "byteswap_mode": self.byteswap_mode.get(),
                 "trim_64mb": bool(self.trim_64mb.get()),
                 "bulk_packages": bool(self.bulk_packages.get()),
+                "bulk_enable_ips": bool(self.bulk_enable_ips.get()),
+                "normalize_nes": bool(self.normalize_nes.get()),
+                "add_snes_header": bool(self.add_snes_header.get()),
                 "emulator_path": self.emulator_path.get(),
                 "emulator_assignments": list(self.emulator_assignments),
                 "association_action": self.association_action.get(),
@@ -390,6 +457,27 @@ class AutoPatcherApp:
             except Exception: pass
         if "append_suffix" in cfg:
             try: self.append_suffix.set(bool(cfg.get("append_suffix")))
+            except Exception: pass
+        if "add_ines_header" in cfg:
+            try: self.add_ines_header.set(bool(cfg.get("add_ines_header")))
+            except Exception: pass
+        if "remove_ines_header" in cfg:
+            try: self.remove_ines_header.set(bool(cfg.get("remove_ines_header")))
+            except Exception: pass
+        if "temp_remove_ines_header" in cfg:
+            try: self.temp_remove_ines_header.set(bool(cfg.get("temp_remove_ines_header")))
+            except Exception: pass
+        elif "normalize_nes" in cfg:
+            try: self.temp_remove_ines_header.set(bool(cfg.get("normalize_nes")))
+            except Exception: pass
+        if "add_snes_header" in cfg:
+            try: self.add_snes_header.set(bool(cfg.get("add_snes_header")))
+            except Exception: pass
+        if "remove_snes_header" in cfg:
+            try: self.remove_snes_header.set(bool(cfg.get("remove_snes_header")))
+            except Exception: pass
+        if "temp_remove_snes_header" in cfg:
+            try: self.temp_remove_snes_header.set(bool(cfg.get("temp_remove_snes_header")))
             except Exception: pass
         # Search scope.
         sc = cfg.get("search_scope")
@@ -432,6 +520,12 @@ class AutoPatcherApp:
         if "bulk_packages" in cfg:
             try:
                 self.bulk_packages.set(bool(cfg.get("bulk_packages")))
+            except Exception:
+                pass
+
+        if "bulk_enable_ips" in cfg:
+            try:
+                self.bulk_enable_ips.set(bool(cfg.get("bulk_enable_ips")))
             except Exception:
                 pass
 
@@ -536,6 +630,13 @@ class AutoPatcherApp:
             "emulator_assignments": list(self.emulator_assignments),
             "association_action": self.association_action.get(),
             "auto_rom_selector": bool(self.auto_rom_selector.get()),
+            "bulk_enable_ips": bool(self.bulk_enable_ips.get()),
+            "add_ines_header": bool(self.add_ines_header.get()),
+            "remove_ines_header": bool(self.remove_ines_header.get()),
+            "temp_remove_ines_header": bool(self.temp_remove_ines_header.get()),
+            "add_snes_header": bool(self.add_snes_header.get()),
+            "remove_snes_header": bool(self.remove_snes_header.get()),
+            "temp_remove_snes_header": bool(self.temp_remove_snes_header.get()),
             "rom_autoselect_cache": dict(self.rom_autoselect_cache),
         }
 
@@ -791,7 +892,23 @@ class AutoPatcherApp:
         text = str(value or "").strip().lower()
         if text.startswith("."):
             text = text[1:]
-        return text
+        alias_map = {
+            "gameboy": "gb",
+            "game boy": "gb",
+            "dmg": "gb",
+            "gameboycolor": "gbc",
+            "game boy color": "gbc",
+            "color": "gbc",
+            "cgb": "gbc",
+            "super nintendo": "sfc",
+            "snes": "sfc",
+            "super famicom": "sfc",
+            "megadrive": "md",
+            "mega drive": "md",
+            "genesis": "gen",
+            "nintendo 64": "z64",
+        }
+        return alias_map.get(text, text)
 
     def _parse_rom_type_tokens(self, value):
         if isinstance(value, (list, tuple, set)):
@@ -830,10 +947,13 @@ class AutoPatcherApp:
         rom_type_options = list(getattr(self, "rom_type_options", []))
         if not rom_type_options:
             rom_type_options = [
-                "nes", "sfc", "smc", "gba", "gbc",
+                "nes", "fds", "unf", "unif",
+                "sfc", "smc", "swc", "fig",
+                "gba", "agb",
+                "gb", "gbc", "cgb",
+                "sms", "gg", "sg", "pce",
                 "gen", "md", "bin", "rom",
                 "z64", "n64", "v64",
-                "sms", "pce",
             ]
             self.rom_type_options = rom_type_options
 
@@ -1073,6 +1193,9 @@ class AutoPatcherApp:
     def _on_settings_var_changed(self):
         self.save_app_settings(log_result=False)
 
+    def open_rom_header_options(self):
+        open_rom_header_options(self)
+
     def open_settings_window(self):
         if self.settings_window and self.settings_window.winfo_exists():
             try:
@@ -1093,7 +1216,7 @@ class AutoPatcherApp:
             pass
         win.transient(self.root)
         win.resizable(True, True)
-        win.minsize(540, 430)
+        win.minsize(640, 470)
         win.configure(bg="#f0f0f0")
 
         def _on_close():
@@ -1107,9 +1230,105 @@ class AutoPatcherApp:
 
         outer = tk.Frame(win, padx=10, pady=10, bg="#f0f0f0")
         outer.pack(fill="both", expand=True)
+        outer.grid_rowconfigure(0, weight=1)
+        outer.grid_columnconfigure(0, weight=1)
 
-        file_assoc = tk.LabelFrame(outer, text="File associations", padx=8, pady=8, bg="#f0f0f0")
-        file_assoc.pack(fill="x", pady=(0, 10))
+        notebook = ttk.Notebook(outer)
+        notebook.grid(row=0, column=0, sticky="nsew")
+
+        emulator_tab = tk.Frame(notebook, bg="#f0f0f0", padx=8, pady=8)
+        bulk_tab = tk.Frame(notebook, bg="#f0f0f0", padx=8, pady=8)
+        misc_tab = tk.Frame(notebook, bg="#f0f0f0", padx=8, pady=8)
+        notebook.add(emulator_tab, text="Emulator")
+        notebook.add(bulk_tab, text="Bulk Patching")
+        notebook.add(misc_tab, text="Misc")
+
+        emulator_tab.grid_columnconfigure(0, weight=1)
+        emulator_tab.grid_rowconfigure(0, weight=1)
+        bulk_tab.grid_columnconfigure(0, weight=1)
+        bulk_tab.grid_rowconfigure(1, weight=1)
+        misc_tab.grid_columnconfigure(0, weight=1)
+
+        emu = tk.LabelFrame(emulator_tab, text="Emulators", padx=8, pady=8, bg="#f0f0f0")
+        emu.grid(row=0, column=0, sticky="nsew", pady=(0, 10))
+        emu.grid_columnconfigure(0, weight=1)
+        emu.grid_rowconfigure(1, weight=1)
+
+        emu_btns = tk.Frame(emu, bg="#f0f0f0")
+        emu_btns.grid(row=0, column=0, sticky="ew", pady=(0, 8))
+        tk.Button(emu_btns, text="Add emulator", command=self.add_emulator_assignment, width=16).pack(side="left")
+        tk.Button(emu_btns, text="Remove selected", command=self.remove_selected_emulator_assignment, width=16).pack(side="left", padx=(8, 8))
+        tk.Button(emu_btns, text="Clear all", command=self.clear_all_emulator_assignments, width=12).pack(side="left")
+
+        tree_frame = tk.Frame(emu, bg="#f0f0f0")
+        tree_frame.grid(row=1, column=0, sticky="nsew")
+        tree_frame.grid_columnconfigure(0, weight=1)
+        tree_frame.grid_rowconfigure(0, weight=1)
+        self._settings_emulator_tree = ttk.Treeview(tree_frame, columns=("romtype", "path"), show="headings", height=9)
+        self._settings_emulator_tree.heading("romtype", text="ROM type")
+        self._settings_emulator_tree.heading("path", text="Emulator path")
+        self._settings_emulator_tree.column("romtype", width=130, anchor="w")
+        self._settings_emulator_tree.column("path", width=360, anchor="w")
+        self._settings_emulator_tree.grid(row=0, column=0, sticky="nsew")
+        self._settings_emulator_tree.bind("<<TreeviewSelect>>", self._on_emulator_assignment_selected)
+        emu_scroll = ttk.Scrollbar(tree_frame, orient="vertical", command=self._settings_emulator_tree.yview)
+        emu_scroll.grid(row=0, column=1, sticky="ns")
+        self._settings_emulator_tree.configure(yscrollcommand=emu_scroll.set)
+
+        edit_row = tk.Frame(emu, bg="#f0f0f0")
+        edit_row.grid(row=2, column=0, sticky="ew", pady=(8, 0))
+        tk.Label(edit_row, text="Assigned ROM types:", bg="#f0f0f0").pack(side="left")
+        self._settings_rom_type_var = tk.StringVar(value="")
+        tk.Label(edit_row, textvariable=self._settings_rom_type_var, bg="#f0f0f0", anchor="w").pack(side="left", fill="x", expand=True, padx=(8, 8))
+        tk.Button(edit_row, text="Edit types", command=self._save_selected_emulator_rom_type, width=12).pack(side="left")
+
+        assoc = tk.LabelFrame(emulator_tab, text="When opening through associations", padx=8, pady=8, bg="#f0f0f0")
+        assoc.grid(row=1, column=0, sticky="ew", pady=(0, 10))
+        tk.Radiobutton(assoc, text="Create ROM", variable=self.association_action, value="create_rom", command=self._on_settings_var_changed, bg="#f0f0f0").pack(anchor="w")
+        tk.Radiobutton(assoc, text="Run in emulator", variable=self.association_action, value="run_emulator", command=self._on_settings_var_changed, bg="#f0f0f0").pack(anchor="w", pady=(6, 0))
+        tk.Checkbutton(assoc, text="Enable automatic ROM selector", variable=self.auto_rom_selector, command=self._on_settings_var_changed, bg="#f0f0f0").pack(anchor="w", pady=(10, 0))
+
+        desc = tk.Label(
+            emulator_tab,
+            justify="left",
+            anchor="w",
+            wraplength=500,
+            bg="#f0f0f0",
+            text=(
+                "Create ROM creates a patched ROM file but won't launch the emulator.\n"
+                "Run in emulator behaves like Flips' association mode: after patching, the new ROM is launched\n"
+                "with the emulator assigned to that ROM type.\n"
+                "Automatic ROM selector only applies to BPS patches and reuses a previously matched base ROM when the source CRC32 still matches."
+            ),
+        )
+        desc.grid(row=2, column=0, sticky="ew", pady=(2, 0))
+
+        bulk_options = tk.LabelFrame(bulk_tab, text="Bulk patching options", padx=8, pady=8, bg="#f0f0f0")
+        bulk_options.grid(row=0, column=0, sticky="ew", pady=(0, 10))
+        tk.Checkbutton(
+            bulk_options,
+            text="Enable IPS patching in Bulk Patching",
+            variable=self.bulk_enable_ips,
+            command=self._on_settings_var_changed,
+            bg="#f0f0f0",
+        ).pack(anchor="w")
+
+        bulk_desc = tk.Label(
+            bulk_tab,
+            justify="left",
+            anchor="nw",
+            wraplength=500,
+            bg="#f0f0f0",
+            text=(
+                "BPS bulk patching stays enabled. IPS bulk patching is disabled by default because IPS files do not "
+                "contain source metadata, so they are easier to apply to the wrong ROM.\n\n"
+                "Turn this on only when you intentionally want Bulk Patching to scan and try .ips files."
+            ),
+        )
+        bulk_desc.grid(row=1, column=0, sticky="nsew")
+
+        file_assoc = tk.LabelFrame(misc_tab, text="File associations", padx=8, pady=8, bg="#f0f0f0")
+        file_assoc.grid(row=0, column=0, sticky="ew")
         assoc_btns = tk.Frame(file_assoc, bg="#f0f0f0")
         assoc_btns.pack(fill="x")
         fix_icons_btn = tk.Button(assoc_btns, text="Fix app icons", command=self.register_windows_file_types, width=14)
@@ -1148,62 +1367,26 @@ class AutoPatcherApp:
         clear_context_btn.pack(side="left")
         self._settings_cleanup_buttons = [fix_icons_btn, clear_icon_btn, clear_context_btn]
 
-        emu = tk.LabelFrame(outer, text="Emulators", padx=8, pady=8, bg="#f0f0f0")
-        emu.pack(fill="both", expand=True, pady=(0, 10))
-
-        emu_btns = tk.Frame(emu, bg="#f0f0f0")
-        emu_btns.pack(fill="x", pady=(0, 8))
-        tk.Button(emu_btns, text="Add emulator", command=self.add_emulator_assignment, width=16).pack(side="left")
-        tk.Button(emu_btns, text="Remove selected", command=self.remove_selected_emulator_assignment, width=16).pack(side="left", padx=(8, 8))
-        tk.Button(emu_btns, text="Clear all", command=self.clear_all_emulator_assignments, width=12).pack(side="left")
-
-        tree_frame = tk.Frame(emu, bg="#f0f0f0")
-        tree_frame.pack(fill="both", expand=True)
-        self._settings_emulator_tree = ttk.Treeview(tree_frame, columns=("romtype", "path"), show="headings", height=7)
-        self._settings_emulator_tree.heading("romtype", text="ROM type")
-        self._settings_emulator_tree.heading("path", text="Emulator path")
-        self._settings_emulator_tree.column("romtype", width=110, anchor="w")
-        self._settings_emulator_tree.column("path", width=360, anchor="w")
-        self._settings_emulator_tree.pack(side="left", fill="both", expand=True)
-        self._settings_emulator_tree.bind("<<TreeviewSelect>>", self._on_emulator_assignment_selected)
-        emu_scroll = ttk.Scrollbar(tree_frame, orient="vertical", command=self._settings_emulator_tree.yview)
-        emu_scroll.pack(side="right", fill="y")
-        self._settings_emulator_tree.configure(yscrollcommand=emu_scroll.set)
-
-        edit_row = tk.Frame(emu, bg="#f0f0f0")
-        edit_row.pack(fill="x", pady=(8, 0))
-        tk.Label(edit_row, text="Assigned ROM types:", bg="#f0f0f0").pack(side="left")
-        self._settings_rom_type_var = tk.StringVar(value="")
-        tk.Label(edit_row, textvariable=self._settings_rom_type_var, bg="#f0f0f0", anchor="w").pack(side="left", fill="x", expand=True, padx=(8, 8))
-        tk.Button(edit_row, text="Edit types", command=self._save_selected_emulator_rom_type, width=12).pack(side="left")
-
-        assoc = tk.LabelFrame(outer, text="When opening through associations", padx=8, pady=8, bg="#f0f0f0")
-        assoc.pack(fill="x", pady=(0, 10))
-        tk.Radiobutton(assoc, text="Create ROM", variable=self.association_action, value="create_rom", command=self._on_settings_var_changed, bg="#f0f0f0").pack(anchor="w")
-        tk.Radiobutton(assoc, text="Run in emulator", variable=self.association_action, value="run_emulator", command=self._on_settings_var_changed, bg="#f0f0f0").pack(anchor="w", pady=(6, 0))
-        tk.Checkbutton(assoc, text="Enable automatic ROM selector", variable=self.auto_rom_selector, command=self._on_settings_var_changed, bg="#f0f0f0").pack(anchor="w", pady=(10, 0))
-
-        desc = tk.Label(
-            outer,
+        misc_desc = tk.Label(
+            misc_tab,
             justify="left",
             anchor="w",
             wraplength=500,
             bg="#f0f0f0",
             text=(
-                "Create ROM creates a patched ROM file but won't launch the emulator.\n"
-                "Run in emulator behaves like Flips' association mode: after patching, the new ROM is launched\n"
-                "with the emulator assigned to that ROM type.\n"
-                "Automatic ROM selector only applies to BPS patches and reuses a previously matched base ROM when the source CRC32 still matches."
+                "These Windows integration tools refresh file icons and clear Open With history.\n"
+                "They do not change your emulator assignments or bulk patching options."
             ),
         )
-        desc.pack(fill="x", pady=(2, 10))
+        misc_desc.grid(row=1, column=0, sticky="ew", pady=(10, 0))
 
         footer = tk.Frame(outer, bg="#f0f0f0")
-        footer.pack(fill="x", pady=(2, 0))
+        footer.grid(row=1, column=0, sticky="ew", pady=(10, 0))
         tk.Button(footer, text="Close", command=_on_close, width=10).pack(side="right", padx=(0, 8), pady=(0, 2))
 
         self._refresh_emulator_assignments_view()
         win.protocol("WM_DELETE_WINDOW", _on_close)
+
     def _remember_base_rom_for_patch(self, patch_file_path: str, base_rom_path: str):
         try:
             if os.path.splitext(patch_file_path)[1].lower() != ".bps":
@@ -1281,26 +1464,48 @@ class AutoPatcherApp:
             return False
 
         rom_ext = self._normalize_rom_type_text(os.path.splitext(rom_path)[1])
+        assignments = list(getattr(self, "emulator_assignments", []) or [])
         emulator = ""
         matched_rule = ""
-        for item in self.emulator_assignments:
+        wildcard_emulator = ""
+        wildcard_rule = ""
+
+        for item in assignments:
             emu_path = os.path.abspath(str(item.get("path") or "").strip())
+            if not emu_path:
+                continue
+
             rule_text = str(item.get("rom_type") or "").strip().lower()
-            tokens = [self._normalize_rom_type_text(x) for x in rule_text.replace(';', ',').split(',') if self._normalize_rom_type_text(x)]
+            tokens = self._parse_rom_type_tokens(rule_text)
+
+            # An intentionally blank ROM-type rule acts as an optional wildcard.
+            # Exact ROM-type matches always win over the wildcard.
+            if not tokens:
+                if not wildcard_emulator:
+                    wildcard_emulator = emu_path
+                    wildcard_rule = rule_text
+                continue
+
             if rom_ext and rom_ext in tokens:
                 emulator = emu_path
-                matched_rule = rule_text
+                matched_rule = self._format_rom_type_tokens(tokens)
                 break
 
-        if not emulator and len(self.emulator_assignments) == 1:
-            emulator = os.path.abspath(str(self.emulator_assignments[0].get("path") or "").strip())
-            matched_rule = str(self.emulator_assignments[0].get("rom_type") or "").strip().lower()
+        if not emulator and wildcard_emulator:
+            emulator = wildcard_emulator
+            matched_rule = wildcard_rule
 
-        if not emulator:
+        # Legacy fallback: only use the single emulator_path value when there are
+        # no assignment rows at all. If assignments exist, incompatible ROM types
+        # must be skipped instead of being launched in the wrong emulator.
+        if not emulator and not assignments:
             emulator = os.path.abspath(str(self.emulator_path.get() or "").strip())
+            matched_rule = rom_ext or ""
 
         if not emulator:
-            self.log_message(f"Run in emulator is enabled, but no emulator is assigned for .{rom_ext or 'rom'} files.")
+            self.log_message(
+                f"Skipped emulator launch for {os.path.basename(rom_path)}: no emulator is assigned for .{rom_ext or 'rom'} files."
+            )
             return False
         if not os.path.exists(emulator):
             self.log_message(f"Selected emulator was not found: {emulator}")
@@ -1327,6 +1532,7 @@ class AutoPatcherApp:
             self.log_message("Error: No Modified ROM selected. Please select a Modified ROM first.")
             return
 
+
         # Finds path of the selected in-file name and appends "_patched" to the end of it's out-file name before it's extension.
         for rom in self.modified_rom:
             ext = ".ips" if self.bps_ips_type.get() == ".ips" else ".bps"
@@ -1346,10 +1552,20 @@ class AutoPatcherApp:
             except Exception:
                 pass
 
+            create_base_rom_path = self.base_rom
+            create_modified_rom_path = rom
+
             try:
-                command = [flips_exe_path, '--create', self.base_rom, rom, patch_file_path]
+                command = [flips_exe_path, '--create', create_base_rom_path, create_modified_rom_path, patch_file_path]
                 subprocess.run(command, check=True, capture_output=True, text=True)
                 self.log_message(f"Successfully created patch: {os.path.basename(patch_file_path)}")
+                log_operation_paths(
+                    self.log_message,
+                    patch_file_path=patch_file_path,
+                    base_rom_path=create_base_rom_path,
+                    modified_rom_path=create_modified_rom_path,
+                    output_file_path=patch_file_path,
+                )
             except subprocess.CalledProcessError as e:
                 msg_out = (e.stdout or '').strip()
                 msg_err = (e.stderr or '').strip()
@@ -1363,7 +1579,134 @@ class AutoPatcherApp:
 
         self.log_message("Patch creation process is complete.")
 
+    def _prepare_patch_input_rom(self, patch_file_path, base_rom_extension):
+        """Return (input_rom_path, header_context) after optional temporary header removal."""
+        input_rom_path = self.base_rom
+        header_context = {"temp_input_rom_path": None, "restore_ines_header": b""}
+
+        base_ext = normalize_rom_extension(self.base_rom)
+        patch_name = os.path.basename(patch_file_path)
+        base_name = os.path.basename(self.base_rom)
+        try:
+            with open(self.base_rom, "rb") as f:
+                base_data = f.read()
+
+            if base_ext == "nes" and self.temp_remove_ines_header.get():
+                self.log_message(f"ROM header options: checking Base ROM for temporary iNES header removal before applying {patch_name}.")
+                if has_ines_header(base_data, self.base_rom):
+                    with tempfile.NamedTemporaryFile(delete=False, suffix=base_rom_extension) as tmp:
+                        tmp.write(remove_ines_header_bytes(base_data, self.base_rom))
+                        header_context["temp_input_rom_path"] = tmp.name
+                    input_rom_path = header_context["temp_input_rom_path"]
+                    header_context["restore_ines_header"] = bytes(base_data[:16])
+                    self.log_message(f"Removed iNES header temporarily for patch input: {base_name}")
+                else:
+                    self.log_message(f"No iNES header found on Base ROM: {base_name}")
+                    self.log_message(f"ROM header options: no iNES header to remove; will add iNES copier header to output after patching: {os.path.basename(patch_file_path)}")
+                    self.log_message("")
+
+            elif base_ext in {"sfc", "smc", "swc", "fig"} and self.temp_remove_snes_header.get():
+                self.log_message(f"ROM header options: checking Base ROM for temporary SNES copier header removal before applying {patch_name}.")
+                if has_snes_copier_header(base_data, self.base_rom):
+                    with tempfile.NamedTemporaryFile(delete=False, suffix=base_rom_extension) as tmp:
+                        tmp.write(remove_snes_copier_header_bytes(base_data, self.base_rom))
+                        header_context["temp_input_rom_path"] = tmp.name
+                    input_rom_path = header_context["temp_input_rom_path"]
+                    self.log_message(f"Removed SNES copier header temporarily for patch input: {base_name}")
+                else:
+                    self.log_message(f"No SNES copier header found on Base ROM: {base_name}")
+                    self.log_message(f"ROM header options: no SNES copier header to remove; will add SNES copier header to output after patching: {os.path.basename(patch_file_path)}")
+                    self.log_message("")
+        except Exception as e:
+            self.log_message(f"Failed to prepare temporary header-adjusted input ROM: {e}")
+            temp_input_rom_path = header_context.get("temp_input_rom_path")
+            if temp_input_rom_path and os.path.exists(temp_input_rom_path):
+                try:
+                    os.remove(temp_input_rom_path)
+                except Exception:
+                    pass
+            raise
+
+        return input_rom_path, header_context
+
+        if normalize_rom_extension(self.base_rom) != 'nes':
+            return input_rom_path, temp_input_rom_path
+
+        patch_name = os.path.basename(patch_file_path)
+        base_name = os.path.basename(self.base_rom)
+        self.log_message(f"ROM header options: checking Base ROM for iNES header before applying {patch_name}.")
+
+        try:
+            with open(self.base_rom, 'rb') as f:
+                base_data = f.read()
+
+            if has_ines_header(base_data):
+                with tempfile.NamedTemporaryFile(delete=False, suffix=base_rom_extension) as tmp:
+                    tmp.write(remove_ines_header_bytes(base_data))
+                    temp_input_rom_path = tmp.name
+                input_rom_path = temp_input_rom_path
+                self.log_message(f"Removed iNES header from Base ROM: {base_name}")
+            else:
+                self.log_message(f"No iNES header found on Base ROM: {base_name}")
+        except Exception as e:
+            self.log_message(f"Failed to prepare header-normalized input ROM: {e}")
+            if temp_input_rom_path and os.path.exists(temp_input_rom_path):
+                try:
+                    os.remove(temp_input_rom_path)
+                except Exception:
+                    pass
+            raise
+
+        return input_rom_path, temp_input_rom_path
+
+    def _apply_output_header_options(self, patched_rom_path, header_context=None):
+        """Apply optional output header transforms and log exactly what happened."""
+        header_context = header_context or {}
+        base_ext = normalize_rom_extension(self.base_rom)
+        output_name = os.path.basename(patched_rom_path)
+
+        try:
+            if base_ext == "nes":
+                add_out = bool(self.temp_remove_ines_header.get() or self.add_ines_header.get())
+                remove_out = bool(self.remove_ines_header.get())
+                if add_out and remove_out:
+                    self.log_message(f"ROM header options: conflicting NES output options; leaving output unchanged: {output_name}")
+                    return
+                if remove_out:
+                    changed = rewrite_rom_file_with_header_options(patched_rom_path, remove_ines=True)
+                    if changed:
+                        self.log_message(f"Removed iNES header from output: {output_name}")
+                    return
+                if add_out:
+                    changed = rewrite_rom_file_with_header_options(
+                        patched_rom_path,
+                        add_ines_header=header_context.get("restore_ines_header") or (b"NES\x1a" + (b"\x00" * 12)),
+                    )
+                    if changed:
+                        self.log_message(f"Added iNES copier header to output: {output_name}")
+                    return
+
+            if base_ext in {"sfc", "smc", "swc", "fig"}:
+                add_out = bool(self.temp_remove_snes_header.get() or self.add_snes_header.get())
+                remove_out = bool(self.remove_snes_header.get())
+                if add_out and remove_out:
+                    self.log_message(f"ROM header options: conflicting SNES output options; leaving output unchanged: {output_name}")
+                    return
+                if remove_out:
+                    changed = rewrite_rom_file_with_header_options(patched_rom_path, remove_snes_copier_header=True)
+                    if changed:
+                        self.log_message(f"Removed SNES copier header from output: {output_name}")
+                    return
+                if add_out:
+                    changed = rewrite_rom_file_with_header_options(patched_rom_path, add_snes_copier_header=True)
+                    if changed:
+                        self.log_message(f"Added SNES copier header to output: {output_name}")
+                    return
+        except Exception as e:
+            self.log_message(f"Failed to apply output header options: {e}")
+
     def apply_patches(self):
+
         """Apply each selected .bps/.ips patch to the selected Base ROM."""
         if not self.base_rom:
             self.log_message("Error: No Base ROM selected. Please select a Base ROM first.")
@@ -1374,13 +1717,19 @@ class AutoPatcherApp:
             patched_rom_base = os.path.splitext(patch_file_path)[0]
             patched_rom_path = (patched_rom_base + "_patched" + base_rom_extension) if self.append_suffix.get() else (patched_rom_base + base_rom_extension)
 
-            metadata = get_patch_metadata(patch_file_path)
-            base_crc32 = calculate_crc32(self.base_rom)
+            header_context = {}
+            try:
+                input_rom_path, header_context = self._prepare_patch_input_rom(patch_file_path, base_rom_extension)
+            except Exception:
+                continue
+
+            patch_ext = os.path.splitext(patch_file_path)[1].lower()
+            metadata = get_patch_metadata(patch_file_path) if patch_ext == ".bps" else get_ips_metadata(patch_file_path)
+            base_crc32 = calculate_crc32(input_rom_path)
 
             source_crc32 = None
-            if metadata and "Source CRC32" in metadata:
+            if patch_ext == ".bps" and metadata and "Source CRC32" in metadata:
                 source_crc32 = metadata["Source CRC32"]
-                # Check if the Base ROM matches what the patch expects.
                 if f"{base_crc32:#010x}" != source_crc32:
                     if self.force_patch.get():
                         self.log_message(f"Force to Patch enabled. Applying patch for {os.path.basename(patch_file_path)} despite CRC32 mismatch.")
@@ -1389,26 +1738,38 @@ class AutoPatcherApp:
                         continue
                 else:
                     self.log_message(f"CRC32 match for {os.path.basename(patch_file_path)}. Proceeding with patch.")
+            elif patch_ext == ".ips":
+                ok, reason, details = validate_ips_base_rom(patch_file_path, input_rom_path)
+                if not ok and not self.force_patch.get():
+                    self.log_message(f"Skipping patching for {os.path.basename(patch_file_path)} due to IPS validation failure: {reason}.")
+                    continue
+                if ok:
+                    self.log_message(f"IPS size passed for {os.path.basename(patch_file_path)}. Proceeding with patch.")
+                else:
+                    self.log_message(f"Force to Patch enabled. Applying IPS patch for {os.path.basename(patch_file_path)} despite validation failure: {reason}.")
 
             try:
-                # Build the command (with or without ignoring checksums).
                 if self.force_patch.get() and source_crc32 and f"{base_crc32:#010x}" != source_crc32:
-                    command = [flips_exe_path, '--apply', '--ignore-checksum', patch_file_path, self.base_rom, patched_rom_path]
+                    command = [flips_exe_path, '--apply', '--ignore-checksum', patch_file_path, input_rom_path, patched_rom_path]
                 else:
-                    command = [flips_exe_path, '--apply', patch_file_path, self.base_rom, patched_rom_path]
+                    command = [flips_exe_path, '--apply', patch_file_path, input_rom_path, patched_rom_path]
 
                 subprocess.run(command, check=True, capture_output=True, text=True)
+                self._apply_output_header_options(patched_rom_path, header_context)
 
                 if self.force_patch.get() and source_crc32 and f"{base_crc32:#010x}" != source_crc32:
                     self.log_message(f"Successfully applied patch despite errors: {os.path.basename(patched_rom_path)}")
                 else:
                     self.log_message(f"Successfully applied patch: {os.path.basename(patched_rom_path)}")
 
-                # Optional post-patch N64 endian conversion.
                 patched_rom_path = self._apply_byteswap_to_output(patched_rom_path)
-
-                # Optional post-patch N64 size trim to 64MiB.
                 patched_rom_path = self._apply_trim_to_64mb_output(patched_rom_path)
+                log_operation_paths(
+                    self.log_message,
+                    patch_file_path=patch_file_path,
+                    base_rom_path=input_rom_path,
+                    output_file_path=patched_rom_path,
+                )
                 self._remember_base_rom_for_patch(patch_file_path, self.base_rom)
                 self.launch_emulator_if_configured(patched_rom_path)
 
@@ -1419,16 +1780,25 @@ class AutoPatcherApp:
                     self.log_message(f"  Stdout: {e.stdout.strip() if e.stdout else 'No output'}")
                     self.log_message(f"  Stderr: {e.stderr.strip() if e.stderr else 'Unknown error occurred.'}")
                 else:
+                    self._apply_output_header_options(patched_rom_path, header_context)
                     self.log_message(f"Successfully applied patch despite errors: [{os.path.basename(patched_rom_path)}]")
-                    self.log_message(f"Output file location: {patched_rom_path}")
-
-                    # Optional post-patch N64 endian conversion.
                     patched_rom_path = self._apply_byteswap_to_output(patched_rom_path)
-
-                    # Optional post-patch N64 size trim to 64MiB.
                     patched_rom_path = self._apply_trim_to_64mb_output(patched_rom_path)
+                    log_operation_paths(
+                        self.log_message,
+                        patch_file_path=patch_file_path,
+                        base_rom_path=input_rom_path,
+                        output_file_path=patched_rom_path,
+                    )
                     self._remember_base_rom_for_patch(patch_file_path, self.base_rom)
                     self.launch_emulator_if_configured(patched_rom_path)
+            finally:
+                temp_input_rom_path = (header_context or {}).get('temp_input_rom_path')
+                if temp_input_rom_path and os.path.exists(temp_input_rom_path):
+                    try:
+                        os.remove(temp_input_rom_path)
+                    except Exception:
+                        pass
 
         self.log_message("Patching process is complete.")
     # ----- END C3: Core operations (create/apply) ---------------------------------
@@ -1465,6 +1835,17 @@ class AutoPatcherApp:
         except Exception:
             pass
 
+        try:
+            self.add_ines_header.set(False)
+            self.remove_ines_header.set(False)
+            self.temp_remove_ines_header.set(False)
+            self.add_snes_header.set(False)
+            self.remove_snes_header.set(False)
+            self.temp_remove_snes_header.set(False)
+            if self.rom_header_options_window and self.rom_header_options_window.winfo_exists():
+                self.rom_header_options_window.destroy()
+        except Exception:
+            pass
 
         # Reset bulk patching option.
         try:
@@ -1520,6 +1901,11 @@ class AutoPatcherApp:
             pass
 
         try:
+            self.rom_header_options_button.config(state=(tk.NORMAL if patch_mode else tk.DISABLED))
+        except Exception:
+            pass
+
+        try:
             self.bulk_packages_checkbox.config(state=(tk.NORMAL if patch_mode else tk.DISABLED))
         except Exception:
             pass
@@ -1545,6 +1931,24 @@ class AutoPatcherApp:
             try:
                 self.byteswap_mode.set("disable")
                 self.byteswap_button.config(text="Disable endian swapping")
+            except Exception:
+                pass
+            try:
+                # ROM header options are patch-application-only settings.
+                # Clear them whenever the app switches into Auto Create Patches
+                # so they cannot silently carry over into the create workflow.
+                self.add_ines_header.set(False)
+                self.remove_ines_header.set(False)
+                self.temp_remove_ines_header.set(False)
+                self.add_snes_header.set(False)
+                self.remove_snes_header.set(False)
+                self.temp_remove_snes_header.set(False)
+            except Exception:
+                pass
+            try:
+                if self.rom_header_options_window and self.rom_header_options_window.winfo_exists():
+                    self.rom_header_options_window.destroy()
+                    self.rom_header_options_window = None
             except Exception:
                 pass
 
@@ -1708,10 +2112,17 @@ class AutoPatcherApp:
             metadata = get_patch_metadata(file_path)
 
         if metadata:
-            self.log_message(f"Patch File Metadata ({os.path.basename(file_path)}):")
+            header = f"IPS Patch File Hashes ({os.path.basename(file_path)}):" if ext == ".ips" else f"Patch File Hashes ({os.path.basename(file_path)}):"
+            self.log_message(header)
             for key, value in metadata.items():
-                # IPS does not contain Source/Target CRC32; utils.get_ips_metadata won't include them.
-                self.log_message(f"  {key}: {value}")
+                self.log_message(format_log_field(key, value))
+            if ext == ".bps" and self.base_rom:
+                try:
+                    family = get_rom_family_display(self.base_rom)
+                except Exception:
+                    family = ""
+                if family:
+                    self.log_message(format_log_field("Family", family))
         else:
             self.log_message(f"No metadata available for {os.path.basename(file_path)}.")
 
@@ -1722,14 +2133,14 @@ class AutoPatcherApp:
         sha1 = calculate_sha1(file_path)
         zle = calculate_zle_hash(file_path)
         self.log_message(f"Modified ROM Hashes ({os.path.basename(file_path)}):")
-        self.log_message(f"  CRC32: {crc32:#010x}")
-        self.log_message(f"  MD5:   {md5}")
-        self.log_message(f"  SHA-1: {sha1}")
-        self.log_message(f"  ZLE:   {zle}")
+        self.log_message(format_log_field("CRC32", f"{crc32:#010x}"))
+        self.log_message(format_log_field("MD5", md5))
+        self.log_message(format_log_field("SHA-1", sha1))
+        self.log_message(format_log_field("ZLE", zle))
 
         endian = self._describe_n64_endian(file_path)
         if endian:
-            self.log_message(f"  Endian: {endian}")
+            self.log_message(format_log_field("Endian", endian))
         else:
             self._log_byteswap_non_n64_warning_if_needed(file_path)
 
@@ -1747,6 +2158,111 @@ class AutoPatcherApp:
             self.base_rom = None
             self.log_message("No Base ROM file selected.")
 
+    def _get_header_detection_text(self, rom_path):
+        """Return a short human-readable header detection summary for the selected ROM."""
+        try:
+            ext = normalize_rom_extension(rom_path)
+            with open(rom_path, "rb") as f:
+                data = f.read()
+        except Exception:
+            return "Unavailable"
+
+        if ext == "nes":
+            return "iNES header detected" if has_ines_header(data, rom_path) else "No iNES header detected"
+        if ext in {"sfc", "smc", "swc", "fig"}:
+            return "SNES copier header detected" if has_snes_copier_header(data, rom_path) else "No SNES copier header detected"
+        return "Not applicable for this ROM type"
+
+    def _get_single_rom_header_picker_title(self):
+        """Return the ROM picker dialog title for single-ROM header add/remove actions."""
+        try:
+            parts = []
+
+            if self.remove_ines_header.get():
+                parts.append("remove NES header")
+            elif self.add_ines_header.get():
+                parts.append("add NES header")
+
+            if self.remove_snes_header.get():
+                parts.append("remove SNES header")
+            elif self.add_snes_header.get():
+                parts.append("add SNES header")
+
+            if parts:
+                return f"Select the ROM file ({' / '.join(parts)})"
+        except Exception:
+            pass
+        return "Select the ROM file"
+
+    def _has_auto_header_patch_mode(self):
+        try:
+            return bool(self.temp_remove_ines_header.get() or self.temp_remove_snes_header.get())
+        except Exception:
+            return False
+
+    def _has_single_rom_header_mode(self):
+        try:
+            return bool(
+                self.add_ines_header.get()
+                or self.remove_ines_header.get()
+                or self.add_snes_header.get()
+                or self.remove_snes_header.get()
+            ) and not self._has_auto_header_patch_mode()
+        except Exception:
+            return False
+
+    def _apply_selected_header_action_to_rom(self):
+        """Apply the currently selected non-automatic ROM header action directly to one ROM file."""
+        rom_path = self.base_rom
+        if not rom_path:
+            self.log_message("Error: No ROM selected for ROM Header Options.")
+            return
+
+        rom_ext = normalize_rom_extension(rom_path)
+        output_name = os.path.basename(rom_path)
+        changed = False
+
+        try:
+            if rom_ext == "nes":
+                if self.remove_ines_header.get():
+                    changed = rewrite_rom_file_with_header_options(rom_path, remove_ines=True)
+                    if changed:
+                        self.log_message(f"Removed iNES header from output: {output_name}")
+                    else:
+                        self.log_message(f"No iNES header change was needed: {output_name}")
+                    return
+                if self.add_ines_header.get():
+                    changed = rewrite_rom_file_with_header_options(rom_path, add_ines_header=b"NES\x1a" + (b"\x00" * 12))
+                    if changed:
+                        self.log_message(f"Added iNES copier header to output: {output_name}")
+                    else:
+                        self.log_message(f"No iNES header change was needed: {output_name}")
+                    return
+                self.log_message("ROM header options: no NES add/remove action is selected.")
+                return
+
+            if rom_ext in {"sfc", "smc", "swc", "fig"}:
+                if self.remove_snes_header.get():
+                    changed = rewrite_rom_file_with_header_options(rom_path, remove_snes_copier_header=True)
+                    if changed:
+                        self.log_message(f"Removed SNES copier header from output: {output_name}")
+                    else:
+                        self.log_message(f"No SNES copier header change was needed: {output_name}")
+                    return
+                if self.add_snes_header.get():
+                    changed = rewrite_rom_file_with_header_options(rom_path, add_snes_copier_header=True)
+                    if changed:
+                        self.log_message(f"Added SNES copier header to output: {output_name}")
+                    else:
+                        self.log_message(f"No SNES copier header change was needed: {output_name}")
+                    return
+                self.log_message("ROM header options: no SNES add/remove action is selected.")
+                return
+
+            self.log_message(f"ROM header options are not available for this ROM type: {output_name}")
+        except Exception as e:
+            self.log_message(f"Failed to apply ROM header option: {e}")
+
     def display_base_rom_hashes(self):
         """Log hashes for the selected Base ROM (helps users verify they picked the right file)."""
         if self.base_rom:
@@ -1755,14 +2271,15 @@ class AutoPatcherApp:
             sha1 = calculate_sha1(self.base_rom)
             zle = calculate_zle_hash(self.base_rom)
             self.log_message(f"Base ROM Hashes ({os.path.basename(self.base_rom)}):")
-            self.log_message(f"  CRC32: {crc32:#010x}")
-            self.log_message(f"  MD5:   {md5}")
-            self.log_message(f"  SHA-1: {sha1}")
-            self.log_message(f"  ZLE:   {zle}")
+            self.log_message(format_log_field("CRC32", f"{crc32:#010x}"))
+            self.log_message(format_log_field("MD5", md5))
+            self.log_message(format_log_field("SHA-1", sha1))
+            self.log_message(format_log_field("ZLE", zle))
+            self.log_message(format_log_field("Header Detection", self._get_header_detection_text(self.base_rom)))
 
             endian = self._describe_n64_endian(self.base_rom)
             if endian:
-                self.log_message(f"  Endian: {endian}")
+                self.log_message(format_log_field("Endian", endian))
             else:
                 self._log_byteswap_non_n64_warning_if_needed(self.base_rom)
     # ----- END C4: Small utilities -----------------------------------------------
@@ -1779,16 +2296,41 @@ class AutoPatcherApp:
         mode = self.patch_method.get()
 
         if mode == "Auto Patch Files":
-            # Bulk Patching mode: no dialogs, patch everything in ./patches/ automatically.
+            single_header_mode = self._has_single_rom_header_mode()
+
             try:
                 if bool(self.bulk_packages.get()):
                     self.log_message("Bulk Patching enabled → running automatic patching from ./bulk patching/")
-                    Thread(target=self._bulk_apply_all, daemon=True).start()
+                    self._run_background_patch_job(
+                        self._bulk_apply_all,
+                        busy_message="A patching job is already running. Please wait for it to finish.",
+                    )
                     return
             except Exception:
                 pass
 
-            # (1) Pick patch file(s) first.
+            # Single-ROM header actions use only one ROM picker and then run immediately.
+            if single_header_mode:
+                picker_title = self._get_single_rom_header_picker_title()
+                self.file_search_rom(
+                    title_override=picker_title,
+                    info_message=picker_title,
+                )
+                if not self.base_rom:
+                    return
+                log_operation_paths(
+                    self.log_message,
+                    base_rom_path=self.base_rom,
+                    output_file_path=self.base_rom,
+                )
+                self.log_message("ROM header action has started.")
+                self._run_background_patch_job(
+                    self._apply_selected_header_action_to_rom,
+                    busy_message="A patching job is already running. Please wait for it to finish.",
+                )
+                return
+
+            # Automatic patching workflows keep the patch picker + base ROM picker flow.
             self.patch_files = filedialog.askopenfilenames(
                 title="Select the Patch file (drag for multi-select).",
                 filetypes=[(".BPS Patch Files", "*.bps"), ("All Files", "*.*")]
@@ -1799,7 +2341,6 @@ class AutoPatcherApp:
                 self.log_message("No Patch Files selected.")
                 return
 
-            # (2) Optionally expand selection per the 'scope' menu (see header for definitions).
             if self.patch_files:
                 try:
                     scope = self.search_scope.get()
@@ -1825,25 +2366,36 @@ class AutoPatcherApp:
                         if f not in seen:
                             original.append(f)
                             seen.add(f)
-                    self.patch_files = original # Select the Base ROM file
+                    self.patch_files = original
                 except Exception as e:
                     self.log_message(f"Search expansion error: {e}")
 
-            # (3) Log choices & metadata so the user understands what was found.
-            for patch_file in self.patch_files:
-                self.log_message(f"Selected Patch File: {os.path.basename(patch_file)}")
-                self.display_patch_metadata(patch_file)
-
-            # (4) Pick the Base ROM second, unless automatic ROM selection finds a saved match.
             auto_selected = self._try_auto_select_base_rom_for_patch_files(self.patch_files)
             if not auto_selected:
                 self.file_search_rom(info_message="Select the base ROM file.")
             if not self.base_rom:
                 return
 
-            # (5) Run patching in a background thread so the UI stays responsive.
+            for patch_file in self.patch_files:
+                self.log_message(f"Selected Patch File: {os.path.basename(patch_file)}")
+                self.display_patch_metadata(patch_file)
+
+            for patch_file_path in self.patch_files:
+                base_rom_extension = os.path.splitext(self.base_rom)[1]
+                patched_rom_base = os.path.splitext(patch_file_path)[0]
+                predicted_output_path = (patched_rom_base + "_patched" + base_rom_extension) if self.append_suffix.get() else (patched_rom_base + base_rom_extension)
+                log_operation_paths(
+                    self.log_message,
+                    patch_file_path=patch_file_path,
+                    base_rom_path=self.base_rom,
+                    output_file_path=predicted_output_path,
+                )
+
             self.log_message("Patching process has started.")
-            Thread(target=self.apply_patches, daemon=True).start()
+            self._run_background_patch_job(
+                self.apply_patches,
+                busy_message="A patching job is already running. Please wait for it to finish.",
+            )
 
         elif mode == "Auto Create Patches":
             # (1) Pick Modified ROM first.
@@ -1922,6 +2474,18 @@ class AutoPatcherApp:
             # (5) Log hashes so users can verify each Modified ROM
             # (5) Hashes already displayed earlier after first selection.
             # (6) Create patches in background
+            for rom in self.modified_rom:
+                ext = ".ips" if self.bps_ips_type.get() == ".ips" else ".bps"
+                rom_base = os.path.splitext(rom)[0]
+                patch_file_path = rom_base + ("_patched" if self.append_suffix.get() else "") + ext
+                log_operation_paths(
+                    self.log_message,
+                    patch_file_path=patch_file_path,
+                    base_rom_path=self.base_rom,
+                    modified_rom_path=rom,
+                    output_file_path=patch_file_path,
+                )
+
             self.log_message("Patch creation process has started.")
             self.log_message("Note: for Nintendo 64 ROMs this will take time.")
             Thread(target=self.create_patches, daemon=True).start()

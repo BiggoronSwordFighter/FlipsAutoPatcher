@@ -11,7 +11,7 @@ extra data past 64 MiB is effectively unused "garbage". This optional helper
 truncates (hard-trims) the ROM file to exactly 64 MiB by omitting all bytes
 after 64 MiB.
 
-⚠️ WARNING: This can produce a broken ROM. If the data past 64 MiB contains
+WARNING: This can produce a broken ROM. If the data past 64 MiB contains
 anything important for a specific hack/build, truncating it may introduce bugs,
 crashes, or missing content.
 """
@@ -26,6 +26,10 @@ SIZE_LIMIT_BYTES = 64 * 1024 * 1024  # 64 MiB
 
 
 def _log(log_fn: Optional[Callable[[str], None]], msg: str) -> None:
+    """_log helper.
+
+    Guidance: keep inputs validated, prefer existing shared helpers, and log user-visible status through the current workflow logger when appropriate.
+    """
     if callable(log_fn):
         try:
             log_fn(msg)

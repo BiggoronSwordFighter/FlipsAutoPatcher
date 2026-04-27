@@ -2,10 +2,13 @@ import os
 import sys
 
 FILE_EXTENSIONS = {
-    ".nes", ".sfc", ".smc", ".gba", ".gbc",
+    ".nes", ".fds", ".unf", ".unif",
+    ".sfc", ".smc", ".swc", ".fig",
+    ".gba", ".agb",
+    ".gb", ".gbc", ".cgb",
     ".gen", ".md", ".bin", ".rom",
     ".z64", ".n64", ".v64",
-    ".sms", ".pce"
+    ".sms", ".gg", ".sg", ".pce"
 }
 
 MAGIC_TO_FORMAT = {
@@ -16,10 +19,18 @@ MAGIC_TO_FORMAT = {
 
 
 def swap16(data: bytes) -> bytes:
+    """swap16 helper.
+
+    Guidance: keep inputs validated, prefer existing shared helpers, and log user-visible status through the current workflow logger when appropriate.
+    """
     return b"".join(data[i:i+2][::-1] for i in range(0, len(data), 2))
 
 
 def swap32(data: bytes) -> bytes:
+    """swap32 helper.
+
+    Guidance: keep inputs validated, prefer existing shared helpers, and log user-visible status through the current workflow logger when appropriate.
+    """
     out = bytearray(data)
     for i in range(0, len(out), 4):
         out[i:i+4] = out[i:i+4][::-1]
@@ -41,6 +52,10 @@ FROM_Z64 = {
 
 
 def detect_format(data: bytes) -> str:
+    """detect_format helper.
+
+    Guidance: keep inputs validated, prefer existing shared helpers, and log user-visible status through the current workflow logger when appropriate.
+    """
     try:
         return MAGIC_TO_FORMAT[data[:4]]
     except KeyError:
@@ -48,12 +63,20 @@ def detect_format(data: bytes) -> str:
 
 
 def convert(data: bytes, src: str, dst: str) -> bytes:
+    """convert helper.
+
+    Guidance: keep inputs validated, prefer existing shared helpers, and log user-visible status through the current workflow logger when appropriate.
+    """
     if src == dst:
         return data
     return FROM_Z64[dst](TO_Z64[src](data))
 
 
 def process_file(path: str):
+    """process_file helper.
+
+    Guidance: keep inputs validated, prefer existing shared helpers, and log user-visible status through the current workflow logger when appropriate.
+    """
     ext = os.path.splitext(path)[1].lower()
 
     if ext not in FILE_EXTENSIONS:
