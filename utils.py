@@ -301,7 +301,7 @@ class GUILogger:
         )
 
         # Optional AFTER matches for text that may appear in the middle of a line.
-        # Kept empty on purpose until you need it.
+        # Kept empty N/A.
         self._after_blank_contains = (
         )
 
